@@ -205,7 +205,7 @@ def generate_scorefile(outdir,initial,filt):
 
 	print('-----Outputting scores-----')
 	with open(f'{outdir}score.txt','w') as outfile:
-		outfile.write('PDB   Pock      Target Vol   Pock Vol     Int Vol   Int %  # hits\n')
+		outfile.write('PDB   Pock      Target Vol   Pock Vol      Int Vol   Int %  # hits\n')
 		for i in range(len(inter_final)):
 			a=inter_final[i][0]
 			p=inter_final[i][1]

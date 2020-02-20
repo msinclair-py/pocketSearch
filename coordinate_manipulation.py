@@ -5,10 +5,12 @@ from scipy.spatial.transform import Rotation as R
 
 class Coordinates:
 
-	def __init__(self,directory,pdb,deg1=None,deg2=None,translation=None,rotate=None,mode=1):
+	def __init__(self,directory,pdb,pnum=None,deg1=None,deg2=None,
+			translation=None,rotate=None,mode=1):
 		
 		self.directory = directory
 		self.pdb = pdb
+		self.pnum = pnum
 		self.deg1 = deg1
 		self.deg2 = deg2
 		self.tr = translation
@@ -19,8 +21,12 @@ class Coordinates:
 	#extract coordinates from pdb file, given the limited size of each pocket pdb
 	#there should be no issues accessing them by column index
 	def getCoords(self):
-		initcoords = np.genfromtxt(f'{self.directory}{self.pdb}.pocket.pdb',
-			dtype=float,usecols=(6,7,8))
+		if not self.pnum:
+			initcoords = np.genfromtxt(f'{self.directory}{self.pdb}.pocket.pdb',
+				dtype=float,usecols=(6,7,8))
+		else:
+			initcoords = np.genfromtxt(f'{self.directory}{self.pdb}.{self.pnum}.pdb',
+				dtype=float,usecols=(6,7,8))
 		return initcoords
 
 	
@@ -60,8 +66,8 @@ class Coordinates:
 	#create pdb, keeping relevant conformational state data
 	def makePDB (self,array,a=None,b=None,c=None,d=None,e=None):
 		if self.mode == 1:
-			with open(f'{self.directory}aligned.{self.pdb}','w') as f:
-				with open(f'{self.directory}{self.pdb}','r') as infile:
+			with open(f'{self.directory}aligned.{self.pdb}.{self.pnum}','w') as f:
+				with open(f'{self.directory}{self.pdb}.{self.pnum}.pdb','r') as infile:
 					i=0
 					for line in infile:
 						x = f'{array[i][0]:.3f}'

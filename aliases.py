@@ -5,3 +5,4 @@ surf = '/home/matt/Software/VASPreleasePack/codeRelease/surfProcessingRelease/de
 vasp = '/home/matt/Software/VASPreleasePack/codeRelease/vaspRelease/debug/vasp'
 min_intersect = .70
 min_hits = 1
+pdblist = '../pdb_list.txt'

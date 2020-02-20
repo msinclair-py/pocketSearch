@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import os, glob
 from utils import *
-from aliases import min_intersect,min_hits
+from aliases import min_intersect,min_hits,pdblist
 import argparse, math, os, glob
 from coordinate_manipulation import Coordinates
 
@@ -44,8 +44,6 @@ initialdir = checkFormat(initialdir)
 
 # Different modes of pdb handling
 if args.mode=='random':
-	print('What is the filepath to your pdb list?')
-	pdblist = input()
 	randomPDBs(pdblist,inputdir)
 elif args.mode=='sublist':
 	print('Which sublist? (1-400)')
@@ -60,12 +58,14 @@ rename(inputdir)
 #######currently doesnt work for some reason
 # clean up pdbs, removing cofactors and renumbering where necessary
 for i in glob.glob(f'{inputdir}*'):
-	inp = f'./cleaner.py {i} A'
+	inp = f'python cleaner.py {i} A {inputdir}'
 	os.system(inp)
-	name = os.path.basename(i)
-#	shutil.move(f'{name}_A.pdb',f'{inputdir}')
+	name = os.path.basename(i)[:-4]
+	os.remove(i)
+	if os.path.exists(f'{inputdir}{name}_A.pdb'):
+		os.rename(f'{inputdir}{name}_A.pdb',f'{inputdir}{name}.pdb')
 
-"""
+
 # generate pockets
 find_pockets(inputdir,alpha)
 
@@ -102,12 +102,13 @@ for entry in name_array:
 # center and align pockets
 prealigned=[]
 for name in glob.glob(f'{inputdir}*.pocket*'):
-	prealigned.append(os.path.basename(name).split('.')[0])
+	stem = os.path.basename(name).split('.')
+	prealigned.append([stem[0],stem[1]])
 
 
 ###########################################use the class now##################
 for entry in prealigned:
-	coordsystem = Coordinates(inputdir,entry)
+	coordsystem = Coordinates(inputdir,entry[0],pnum=entry[1])
 	coords = coordsystem.getCoords()
 	centered = coordsystem.center(coords)
 	vector = coordsystem.principal(centered)
@@ -115,11 +116,13 @@ for entry in prealigned:
 	coordsystem.makePDB(aligned)
 
 ### generate surf files and run VASP on pockets
-# check to see if VASP scores and VASP pocekts directory exists
+# check to see if VASP scores and VASP pockets directory exists
+if not os.path.exists(f'{outputdir}VASP'):
+	os.mkdir(f'{outputdir}VASP')
 if not os.path.exists(f'{outputdir}VASP/scores'):
-	os.mkdir('{outputdir}VASP/scores')
+	os.mkdir(f'{outputdir}VASP/scores')
 if not os.path.exists(f'{outputdir}VASP/pockets'):
-	os.mkdir('{outputdir}VASP/pockets')
+	os.mkdir(f'{outputdir}VASP/pockets')
 
 # get surf file of each structure
 gen_surfs(outputdir,inputdir)
@@ -138,4 +141,3 @@ generate_scorefile(outputdir,initialdir,min_intersect)
 
 # prep for ROSETTA
 rosetta_prep(outputdir,inputdir,min_intersect,min_hits)
-"""

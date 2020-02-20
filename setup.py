@@ -12,7 +12,7 @@ setuptools.setup(
 	description="Package to find surrogate structure for catalytic site of a protein",
 	long_description=long_description,
 	long_description_content_type="text/markdown",
-	url="https://github.com/msinclair/bioinformatics"
+	url="https://github.com/msinclair/pocketSearch"
 	packages=setuptools.find_packages(),
 	classifiers=[
 		"Programming Language :: Python :: 3",

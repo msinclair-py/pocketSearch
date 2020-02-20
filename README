@@ -1,1 +1,9 @@
-pocketSearch is a program
+                      ##############
+                      #pocketSearch#
+                      ##############
+
+A program that combines the pocket detecting, nearest neighbor
+algorithms of fpocket 3.1 with the Voronoi diagram building and
+analysis programs, SURF/VASP to qualify good candidates for protein
+engineering. The output of this program is a Rosetta pose file for
+computational mutagenesis.
