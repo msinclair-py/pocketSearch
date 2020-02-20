@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import glob, subprocess, math
+import glob, subprocess, math, os
 import numpy as np
 import argparse
 import utils
@@ -75,7 +75,7 @@ with open(f'{initial}{pdb}_out/{pdb}_out.pdb',
 with open(f'{initial}{pdb}.pocket.pdb', 'w') as out:
 	[out.write(line) for line in pocket]
 
-coords = Coordinates(initial,pdb,deg1,deg2,tr,rotates,0)
+coords = Coordinates(initial,pdb,deg1=deg1,deg2=deg2,translation=tr,rotate=rotates,mode=0)
 initialcoords = coords.getCoords()
 centered = coords.center(initialcoords)
 vector = coords.principal(centered)
@@ -84,7 +84,7 @@ coords.conformation(aligned,conformations)
 
 #pass each aligned structure through SURF to generate the pocket surface
 for i in glob.glob(f'{initial}*conf*'):
-	stuff=i.split('/')[2]
+	stuff=os.path.basename(i)
 	conf=stuff.split('_')[1]
 	rotation=stuff.split('_')[2]
 	tilt=stuff.split('_')[3]
