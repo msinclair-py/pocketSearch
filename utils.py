@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 import os, glob, subprocess, random, Bio
 import numpy as np
-from aliases import fpocket,surf,vasp
+from aliases import fpocket,surf,vasp,pdblist,randnum
 from Bio.PDB import PDBList
 
-def randomPDBs(pdblist,directory):
+def randomPDBs(directory):
 	pdb1 = PDBList()
 	PDB2list=[]
 	array=[]
@@ -12,7 +12,7 @@ def randomPDBs(pdblist,directory):
 		for line in infile:
 			array.append(line)
 	
-	samp = random.sample(range(0,len(array)), 100)
+	samp = random.sample(range(0,len(array)), randnum)
 	for num in samp:
 		PDB2list.append(array[num].strip())
 	for i in PDB2list:

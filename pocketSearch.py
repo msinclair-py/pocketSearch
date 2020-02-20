@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import os, glob
 from utils import *
-from aliases import min_intersect,min_hits,pdblist
+from aliases import min_intersect,min_hits
 import argparse, math, os, glob
 from coordinate_manipulation import Coordinates
 
@@ -44,7 +44,7 @@ initialdir = checkFormat(initialdir)
 
 # Different modes of pdb handling
 if args.mode=='random':
-	randomPDBs(pdblist,inputdir)
+	randomPDBs(inputdir)
 elif args.mode=='sublist':
 	print('Which sublist? (1-400)')
 	num=input()
