@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 import os, glob
 from utils import *
-from aliases import min_intersect,min_hits
 import argparse, math, os, glob
 from coordinate_manipulation import Coordinates
 
@@ -24,6 +23,8 @@ parser.add_argument('-f', '--filter', dest='filt', default=0.7,
 		metavar='F', help='Minimum shared %% identity')
 parser.add_argument('-ht','--hits', dest='hilt', default=1,
 		metavar='H', help='Minimum number of %% identity hits')
+parser.add_argument('-r','--rand',dest='rand', default=100,
+		metavar='R', help='Number of random structure to download, if random mode selected')
 
 # Now, parse the command line arguments and store the values in the arg variable
 args = parser.parse_args()
@@ -36,6 +37,7 @@ alpha = args.alpha
 cutoff = args.cutoff
 min_intersect = args.filt
 min_hits = args.hilt
+rand = int(args.rand)
 
 # make sure directories have correct formatting
 inputdir = checkFormat(inputdir)
@@ -44,7 +46,7 @@ initialdir = checkFormat(initialdir)
 
 # Different modes of pdb handling
 if args.mode=='random':
-	randomPDBs(inputdir)
+	randomPDBs(inputdir,rand)
 elif args.mode=='sublist':
 	print('Which sublist? (1-400)')
 	num=input()

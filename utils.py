@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 import os, glob, subprocess, random, Bio
 import numpy as np
-from aliases import fpocket,surf,vasp,pdblist,randnum
+from aliases import fpocket,surf,vasp,pdblist
 from Bio.PDB import PDBList
 
-def randomPDBs(directory):
+def randomPDBs(directory,rand):
 	pdb1 = PDBList()
 	PDB2list=[]
 	array=[]
@@ -12,7 +12,7 @@ def randomPDBs(directory):
 		for line in infile:
 			array.append(line)
 	
-	samp = random.sample(range(0,len(array)), randnum)
+	samp = random.sample(range(0,len(array)), rand)
 	for num in samp:
 		PDB2list.append(array[num].strip())
 	for i in PDB2list:
@@ -215,13 +215,15 @@ def generate_scorefile(outdir,initial,filt):
 			d=inter_final[i][-1]
 			out=f"{a:<6}{p:<11}{vline:{12}.{8}}{v:{12}.{8}} {d:{9}.{7}} {c:{6}.{3}}    {b}\n"
 			outfile.write(out)
-
+"""
 	s = np.genfromtxt(f'{outdir}score.txt', dtype='unicode', skip_header=1)
 
-	if os.path.exists(f'{outdir}/winners/master_scorefile.txt'):
+	if os.path.exists(f'{outdir}winners/master_scorefile.txt'):
 		mode='a'
 	else:
 		mode='w'
+		if not os.path.exists(f'{outdir}winners/'):
+			os.mkdir(f'{outdir}winners/')
 	
 	with open(f'{outdir}winners/master_scorefile.txt', mode) as f:
 		if mode == 'w':
@@ -245,7 +247,7 @@ def generate_scorefile(outdir,initial,filt):
 				dp=f'{s[i][5]:{7}.{3}}'
 				h=f'{s[i][6]:<6}'
 				f.write(pdb+pock+v1+v2+d+dp+h+'\n')
-
+"""
 
 def rosetta_prep(outdir,indir,filt,hilt):
 	lst = np.genfromtxt(f'{outdir}score.txt', dtype='unicode', skip_header=1,

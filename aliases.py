@@ -10,7 +10,5 @@ vasp = '/home/matt/Software/VASPreleasePack/codeRelease/vaspRelease/debug/vasp'
 # full filepath to your list of pdbs to query
 pdblist = '../pdb_list.txt'
 
-# modifiable parameters for pocketSearch
-min_intersect = .70
-min_hits = 1
-randnum = 100
+# input defaults, if a different value is passed ot parser, these are overridden
+alpha = 80
