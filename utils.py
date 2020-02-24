@@ -250,6 +250,9 @@ def generate_scorefile(outdir,initial,filt):
 """
 
 def rosetta_prep(outdir,indir,filt,hilt):
+	if not os.path.exists(f'{outdir}rosetta'):
+		os.mkdir(f'{outdir}rosetta')
+
 	lst = np.genfromtxt(f'{outdir}score.txt', dtype='unicode', skip_header=1,
 		usecols=(0,1,5,6))
 	
