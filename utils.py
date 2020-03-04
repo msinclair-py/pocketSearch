@@ -15,8 +15,12 @@ def randomPDBs(directory,rand):
 	samp = random.sample(range(0,len(array)), rand)
 	for num in samp:
 		PDB2list.append(array[num].strip())
-	for i in PDB2list:
-		pdb1.retrieve_pdb_file(i,pdir=directory,file_format='pdb')
+
+	with open(f'{directory}randompdbs.txt','w') as infile:
+		for i in PDB2list:
+			pdb1.retrieve_pdb_file(i,pdir=directory,file_format='pdb')
+			infile.write(i)
+
 
 
 def checkFormat(directory):
