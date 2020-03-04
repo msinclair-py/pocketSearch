@@ -13,8 +13,8 @@ from aliases import *
 #NOTE: if you run fpocket with the -i 80 flag the target pocket
 #for 1m1n is any of pockets 1-4 due to being a homotetramer
 parser = argparse.ArgumentParser()#description=__doc__)
-parser.add_argument('pdb', help='PDB of target protein')
-parser.add_argument('initial', help='Directory containing target protein')
+parser.add_argument('pdb', help='PDB of target protein (e.g. 1m1n or 1m1n.pdb)')
+parser.add_argument('initial', help='Directory containing all the fpocket outputs and original pdb')
 parser.add_argument('pocket', help='Residue ID of pocket from fpocket')
 parser.add_argument('-r', '--r_angle', default=30, dest='r', metavar='R', 
 		help='Degree of rotation about z')

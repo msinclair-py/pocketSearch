@@ -19,14 +19,23 @@ class Coordinates:
 
 
 	#extract coordinates from pdb file, given the limited size of each pocket pdb
-	#there should be no issues accessing them by column index
 	def getCoords(self):
 		if not self.pnum:
-			initcoords = np.genfromtxt(f'{self.directory}{self.pdb}.pocket.pdb',
-				dtype=float,usecols=(6,7,8))
+			fpath = f'{self.directory}{self.pdb}.pocket.pdb'
 		else:
-			initcoords = np.genfromtxt(f'{self.directory}{self.pdb}.{self.pnum}.pdb',
-				dtype=float,usecols=(6,7,8))
+			fpath = f'{self.directory}{self.pdb}.{self.pnum}.pdb'
+
+		with open(fpath) as f:
+			lines = f.readlines()
+			initcoords = np.zeros((len(lines),3))
+			for i in range(initcoords.shape[0]):
+				l = lines[i]
+				initcoords[i] = [l[30:38].strip(),l[38:46].strip(),l[46:54].strip()]
+#			initcoords = np.genfromtxt(f'{self.directory}{self.pdb}.pocket.pdb',
+#				dtype=float,usecols=(6,7,8))
+#		else:
+#			initcoords = np.genfromtxt(f'{self.directory}{self.pdb}.{self.pnum}.pdb',
+#				dtype=float,usecols=(6,7,8))
 		return initcoords
 
 	

@@ -22,6 +22,10 @@ def randomPDBs(directory,rand):
 def checkFormat(directory):
 	if directory[-1] != '/':
 		directory = f'{directory}/'
+	if not os.path.exists(directory):
+		print('Directory doesn\'t exist')
+	else:
+		print('Directory exists')
 	return directory
 
 

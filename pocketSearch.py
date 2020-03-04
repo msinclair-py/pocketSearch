@@ -33,10 +33,10 @@ args = parser.parse_args()
 inputdir = args.inputdir
 outputdir = args.outputdir
 initialdir = args.initialdir
-alpha = args.alpha
-cutoff = args.cutoff
-min_intersect = args.filt
-min_hits = args.hilt
+alpha = int(args.alpha)
+cutoff = int(args.cutoff)
+min_intersect = float(args.filt)
+min_hits = int(args.hilt)
 rand = int(args.rand)
 
 # make sure directories have correct formatting
@@ -110,6 +110,7 @@ for name in glob.glob(f'{inputdir}*.pocket*'):
 
 ###########################################use the class now##################
 for entry in prealigned:
+	print(entry)
 	coordsystem = Coordinates(inputdir,entry[0],pnum=entry[1])
 	coords = coordsystem.getCoords()
 	centered = coordsystem.center(coords)
