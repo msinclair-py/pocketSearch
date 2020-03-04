@@ -46,7 +46,7 @@ initialdir = checkFormat(initialdir)
 
 # Different modes of pdb handling
 if args.mode=='random':
-	randomPDBs(inputdir,rand)
+	randomPDBs(inputdir,rand,outputdir)
 elif args.mode=='sublist':
 	print('Which sublist? (1-400)')
 	num=input()

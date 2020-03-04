@@ -4,7 +4,7 @@ import numpy as np
 from aliases import fpocket,surf,vasp,pdblist
 from Bio.PDB import PDBList
 
-def randomPDBs(directory,rand):
+def randomPDBs(directory,rand,outdir):
 	pdb1 = PDBList()
 	PDB2list=[]
 	array=[]
@@ -16,10 +16,10 @@ def randomPDBs(directory,rand):
 	for num in samp:
 		PDB2list.append(array[num].strip())
 
-	with open(f'{directory}randompdbs.txt','w') as infile:
+	with open(f'{outdir}downloaded_structures.txt','w') as outfile:
 		for i in PDB2list:
 			pdb1.retrieve_pdb_file(i,pdir=directory,file_format='pdb')
-			infile.write(i)
+			outfile.write(f'{i}\n')
 
 
 
