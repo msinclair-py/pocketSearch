@@ -57,16 +57,15 @@ elif args.mode!='skip':
 # rename everything to be consistent with typical naming schemes
 rename(inputdir)
 
-#######currently doesnt work for some reason
 # clean up pdbs, removing cofactors and renumbering where necessary
 for i in glob.glob(f'{inputdir}*'):
-	inp = f'python cleaner.py {i} A {inputdir}'
-	os.system(inp)
+	inp = ('python','cleaner.py',i,'A',inputdir)
+	str_inp = [ str(x) for x in inp ]
+	subprocess.run(str_inp)
 	name = os.path.basename(i)[:-4]
 	os.remove(i)
 	if os.path.exists(f'{inputdir}{name}_A.pdb'):
 		os.rename(f'{inputdir}{name}_A.pdb',f'{inputdir}{name}.pdb')
-
 
 # generate pockets
 find_pockets(inputdir,alpha)
@@ -127,20 +126,28 @@ if not os.path.exists(f'{outputdir}VASP/scores'):
 if not os.path.exists(f'{outputdir}VASP/pockets'):
 	os.mkdir(f'{outputdir}VASP/pockets')
 
-# get surf file of each structure
-gen_surfs(outputdir,inputdir)
+### make for loop here ###
+tracker = []
+for pocket in glob.iglob(f'{inputdir}aligned.*'):
+	name = os.path.basename(pocket)
+	name = f"{name.split('.')[1]}.{name.split('.')[2]}"
+	tracker.append(name)
 
-# run intersect VASP on each structure
-intersect(outputdir,initialdir)
+for i,structure in enumerate(tracker):
+	# get surf file
+	gen_surfs(outputdir,inputdir,structure)
+	
+	# run intersect VASP on each structure
+	intersect(outputdir,initialdir,structure,i*1800,len(tracker)*1800)
 
-# extract each score
-extract_score(outputdir)
+	# extract each score
+	extract_score(outputdir,structure)
 
-# get the original volume of each pocket
-original_volume(outputdir)
+	# get the original volume of each pocket
+	original_volume(outputdir,structure)
 
-# generate scorefile
-generate_scorefile(outputdir,initialdir,min_intersect)
+	# append scorefile
+	generate_scorefile(outputdir,initialdir,min_intersect,structure)
 
-# prep for ROSETTA
-rosetta_prep(outputdir,inputdir,min_intersect,min_hits)
+	# prep for ROSETTA
+	rosetta_prep(outputdir,inputdir,min_intersect,min_hits,structure)

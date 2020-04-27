@@ -7,10 +7,11 @@ from Bio.PDB import PDBList
 def randomPDBs(directory,rand,outdir):
 	pdb1 = PDBList()
 	PDB2list=[]
-	array=[]
-	with open(pdblist,'r') as infile:
-		for line in infile:
-			array.append(line)
+	array = np.genfromtxt(pdblist,dtype='unicode')
+	#array=[]
+	#with open(pdblist,'r') as infile:
+	#	for line in infile:
+	#		array.append(line)
 	
 	samp = random.sample(range(0,len(array)), rand)
 	for num in samp:
@@ -20,8 +21,11 @@ def randomPDBs(directory,rand,outdir):
 		for i in PDB2list:
 			pdb1.retrieve_pdb_file(i,pdir=directory,file_format='pdb')
 			outfile.write(f'{i}\n')
-
-
+	
+	array = array[~np.isin(np.arange(array.size), samp)]
+	with open(pdblist, 'w') as new_list:
+		for entry in array:
+			new_list.write(f'{entry}\n')
 
 def checkFormat(directory):
 	if directory[-1] != '/':
@@ -103,39 +107,51 @@ def find_pockets(indir,alphas):
 			print(f'{i}: has pockets')
 
 
-def gen_surfs(outdir,indir):
-	for pock in glob.glob(f'{indir}aligned.*'):
-		pocket = os.path.basename(pock)
-		n = pocket.split('.')[1]
-		p = pocket.split('.')[2]
-		arg = (surf,'-surfProbeGen',pock,f'{outdir}VASP/pockets/{n}_{p}.SURF',3,.5)
+def gen_surfs(outdir,indir,pocket):
+	pock = f'{indir}aligned.{pocket}'
+	print(pocket)
+	n = pocket.split('.')[0]
+	p = pocket.split('.')[1]
+	arg = (surf,'-surfProbeGen',pock,f'{outdir}VASP/pockets/{n}_{p}.SURF',3,.5)
+	str_arg = [ str(x) for x in arg ]
+	out = open(f'{outdir}VASP/pockets/surf.log','w')
+	subprocess.run(str_arg, stdout=out)
+
+
+def intersect(outdir,initial,pocket,count,total):
+	struc = f'{outdir}VASP/pockets/{pocket.split(".")[0]}_{pocket.split(".")[1]}.SURF'
+	n = f"{pocket.split('.')[0]}_{pocket.split('.')[1]}"
+
+	#clean up outputs so that you can perform operations in
+	#the VASP directory, otherwise too many files
+	if not os.path.exists(f'{outdir}VASP/{n}/'):
+		os.mkdir(f'{outdir}VASP/{n}/')
+
+	for init in glob.iglob(f'{initial}*.SURF'):
+		count += 1
+
+		if (count%25==0):
+			print(f'{pocket}: {count}/{total}')
+
+		fname = os.path.basename(init).split('.')
+		conf = fname[1]
+		rot = fname[2]
+		tilt = fname[3]
+		trans = fname[4]
+		flip = fname[5]
+		arg = (vasp,'-csg',struc,init,'I',f'{outdir}VASP/{n}/intersect.{n}.{conf}.{rot}.{tilt}.{trans}.{flip}.SURF',.5)
 		str_arg = [ str(x) for x in arg ]
-		subprocess.run(str_arg)
+		out = open(f'{outdir}intersect.log','w')
+		subprocess.run(str_arg, stdout=out)
+
+	arg2 = (surf,'-surveyVolume',struc)
+	str_arg2 = [ str(x) for x in arg2 ]
+	out = open(f'{outdir}VASP/pockets/{n}.vol.txt','w')
+	subprocess.run(str_arg2, stdout=out)
 
 
-def intersect(outdir,initial):
-	for struc in glob.glob(f'{outdir}VASP/pockets/*.SURF'):
-		pocket = os.path.basename(struc)
-		n = pocket.split('.')[0]
-		for init in glob.glob(f'{initial}*.SURF'):
-			fname = os.path.basename(init).split('.')
-			conf = fname[1]
-			rot = fname[2]
-			tilt = fname[3]
-			trans = fname[4]
-			flip = fname[5]
-			arg = (vasp,'-csg',struc,init,'I',f'{outdir}VASP/intersect.{n}.{conf}.{rot}.{tilt}.{trans}.{flip}.SURF',.5)
-			str_arg = [ str(x) for x in arg ]
-			subprocess.run(str_arg)
-
-		arg2 = (surf,'-surveyVolume',struc)
-		str_arg2 = [ str(x) for x in arg2 ]
-		out = open(f'{outdir}VASP/pockets/{n}.vol.txt','w')
-		subprocess.run(str_arg2, stdout=out)
-
-
-def extract_score(outdir):
-	for inter in glob.glob(f'{outdir}VASP/intersect*'):
+def extract_score(outdir,pocket):
+	for inter in glob.iglob(f"{outdir}VASP/{pocket.split('.')[0]}_{pocket.split('.')[1]}/*"):
 		p = os.path.basename(inter).split('.')
 		na = p[1]
 		co = p[2]
@@ -149,18 +165,18 @@ def extract_score(outdir):
 		subprocess.run(str_arg, stdout=out)
 
 
-def original_volume(outdir):
-	for v in glob.glob(f'{outdir}VASP/pockets/*.SURF'):
-		n = os.path.basename(v).split('.')[0]
-		arg = (surf,'-surveyVolume',v)
-		out = open(f'{outdir}VASP/pockets/{n}.vol.txt','w')
-		str_arg = [ str(x) for x in arg ]
-		subprocess.run(str_arg, stdout=out)
+def original_volume(outdir,p):
+	v = f"{outdir}VASP/pockets/{p.split('.')[0]}_{p.split('.')[1]}.SURF"
+	n = os.path.basename(v).split('.')[0]
+	arg = (surf,'-surveyVolume',v)
+	out = open(f'{outdir}VASP/pockets/{n}.vol.txt','w')
+	str_arg = [ str(x) for x in arg ]
+	subprocess.run(str_arg, stdout=out)
 
 
-def generate_scorefile(outdir,initial,filt):
+def generate_scorefile(outdir,initial,filt,pocket):
 	files,pdbs,name_array,inter,pockets=[],[],[],[],[]
-	for name in glob.glob(f'{outdir}VASP/scores/*iscore.txt'):
+	for name in glob.iglob(f'{outdir}VASP/scores/*iscore.txt'):
 		score = os.path.basename(name)
 		files.append(score)
 		if score not in pdbs: #what is pdbs for???################################
@@ -212,6 +228,7 @@ def generate_scorefile(outdir,initial,filt):
 			hits.update({key : count})
 
 	print('-----Outputting scores-----')
+	print(inter_final)
 	with open(f'{outdir}score.txt','w') as outfile:
 		outfile.write('PDB   Pock      Target Vol   Pock Vol      Int Vol   Int %  # hits\n')
 		for i in range(len(inter_final)):
@@ -257,13 +274,17 @@ def generate_scorefile(outdir,initial,filt):
 				f.write(pdb+pock+v1+v2+d+dp+h+'\n')
 """
 
-def rosetta_prep(outdir,indir,filt,hilt):
+def rosetta_prep(outdir,indir,filt,hilt,pocket):
+	# check if the rosetta output directoyr exists, else make it
 	if not os.path.exists(f'{outdir}rosetta'):
 		os.mkdir(f'{outdir}rosetta')
-
+	
+	# get our list of pose files to make from the scorefile
 	lst = np.genfromtxt(f'{outdir}score.txt', dtype='unicode', skip_header=1,
 		usecols=(0,1,5,6))
 	
+	# this if statement ensures that no indexing errors occur if there is only
+	# one good pocket in the group
 	if lst.ndim == 1:
 		array=[]
 		pose_array=[]
@@ -275,9 +296,23 @@ def rosetta_prep(outdir,indir,filt,hilt):
 				for j in range(len(b)):
 					c+=f'{b[j]}'
 				fil = f'{indir}{a}_out/pockets/pocket{c}_atm.pdb'
-				pose_array = np.genfromtxt(fil, dtype='unicode', skip_header=20,
-					skip_footer=2, usecols=5)
+
+				# need to check if fpocket messed up any pocket pdbs
+				# we don't use any fancy text reading methods as some
+				# of the fpocket errors will be difficult to parse without
+				# going line by line as below
+				lines = []
+				with open(fil,'r') as prefile:
+					for line in prefile:
+						if line[:4] == 'ATOM':
+							lines.append(line.split()[:6])
 				
+				lines = np.asarray(lines)
+				pose_array = [resid for resid in lines[:,-1]]
+				
+				# a period indicates that something went awry with the pdb
+				# generation during fpocket, we can just ignore these
+				# residues
 				for i in range(len(pose_array)):
 					if pose_array[i] not in array:
 						if "." in pose_array[i]:
@@ -306,9 +341,15 @@ def rosetta_prep(outdir,indir,filt,hilt):
 					for j in range(len(b)):
 						c+=f'{b[j]}'
 					fil = f'{indir}{a}_out/pockets/pocket{c}_atm.pdb'
-					pose_array = np.genfromtxt(fil, dtype='unicode', skip_header=20,
-						skip_footer=2, usecols=5)
+					
+					lines = []
+					with open(fil, 'r') as prefile:
+						for i,line in enumerate(prefile):
+							if line[:4] == 'ATOM':
+								lines.append(line.split()[:6])
 
+					lines = np.asarray(lines)
+					pose_array = [resid for resid in lines[:,-1]]
 
 					for i in range(len(pose_array)):
 						if pose_array[i] not in array:

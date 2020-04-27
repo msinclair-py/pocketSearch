@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import numpy as np
+from numba import njit
 from scipy.spatial.transform import Rotation as R
 
 
@@ -97,6 +98,7 @@ class Coordinates:
 
 
 	#conformation generation/flow control function
+	@njit
 	def conformation(self,array,conformations):
 		for i in range(len(conformations)):
 			deg = conformations[i]
