@@ -31,9 +31,7 @@ def check_and_print_pdb(count, residue_buffer, residue_letter):
 	if hasCA and hasN and hasC:
 		for line in residue_buffer:
 			newnum = f'{count}'
-			#f'{count:{4}}'
-			#'%4d ' % count
-			line_edit = f'{line[0:22]}{newnum}{line[27:]}'
+			line_edit = f'{line[0:22]}{newnum:^6}{line[27:]}'
 			pdbfile = pdbfile + line_edit
 
 		chain = line[21]

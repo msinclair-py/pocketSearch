@@ -1,3 +1,4 @@
 # check if intersect file exists else run intersect - utils.py ; intersect function
 # complementarity factor (pocket vol / int vol?)
 # make data plots
+# cleaner removes the resid column meaning if you try to rerun the code it ruins those pdbs
