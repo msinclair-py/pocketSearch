@@ -1,4 +1,3 @@
 # check if intersect file exists else run intersect - utils.py ; intersect function
-# max fpocket cutoff doesnt appear to be used currently - pocketSearch.py
 # complementarity factor (pocket vol / int vol?)
 # make data plots

@@ -84,12 +84,12 @@ for entry in name_array:
 				continue
 			elif "STP" in line:
 				pock_array.append(line)
-				pocket_id.append(line.split()[5])
+				pocket_id.append(int(line.split()[5]))
 	
 	uniq = unique(pocket_id)
 	for i in range(0,len(uniq)):
 		j=i+1
-		a = pock_array.count(j)
+		a = pocket_id.count(j)
 		if a < cutoff:
 			with open(f'{inputdir}{entry.split("_")[0]}.pocket{j}.pdb','w') as outfile:
 				for line in pock_array:
