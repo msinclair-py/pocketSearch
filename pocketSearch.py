@@ -1,7 +1,6 @@
 #!/usr/bin/env python
-import os, glob
+import os, glob, argparse
 from utils import *
-import argparse, math, os, glob
 from coordinate_manipulation import Coordinates
 
 # Define the parser
@@ -13,8 +12,8 @@ parser.add_argument('outputdir', help='Output directory')
 parser.add_argument('initialdir', 
 		help='Directory containing target pocket conformations')
 parser.add_argument('-m', '--mode',  dest='mode', nargs='?',
-		choices=['random','sublist','skip'], metavar='M', default='skip',
-		help='Mode of action, options include:random, sublist and skip')
+		choices=['random','skip'], metavar='M', default='skip',
+		help='Mode of action, choices: skip (default), random download')
 parser.add_argument('-a', '--alpha', dest='alpha', default=80,
 		metavar='A', help='Cutoff for minimum number of alpha spheres in fpocket')
 parser.add_argument('-c', '--cutoff', dest='cutoff', default=150,
@@ -23,8 +22,11 @@ parser.add_argument('-f', '--filter', dest='filt', default=0.7,
 		metavar='F', help='Minimum shared %% identity')
 parser.add_argument('-ht','--hits', dest='hilt', default=1,
 		metavar='H', help='Minimum number of %% identity hits')
-parser.add_argument('-r','--rand',dest='rand', default=100,
+parser.add_argument('-r','--rand', dest='rand', default=100,
 		metavar='R', help='Number of random structure to download, if random mode selected')
+parser.add_argument('-s','--screen', dest='screen', default=0.3,
+		metavar='S', help='Short screen filter to determine whether \
+						translational sampling occurs')
 
 # Now, parse the command line arguments and store the values in the arg variable
 args = parser.parse_args()
@@ -38,6 +40,7 @@ cutoff = int(args.cutoff)
 min_intersect = float(args.filt)
 min_hits = int(args.hilt)
 rand = int(args.rand)
+screen = float(args.screen)
 
 # make sure directories have correct formatting
 inputdir = checkFormat(inputdir)
@@ -55,61 +58,30 @@ elif args.mode!='skip':
 	print("No mode was selected for pdb acquisition, default is to skip downloading pdbs")
 
 # rename everything to be consistent with typical naming schemes
-rename(inputdir)
+formatPDBs(inputdir)
 
 # clean up pdbs, removing cofactors and renumbering where necessary
-for i in glob.glob(f'{inputdir}*'):
-	inp = ('python','cleaner.py',i,'A',inputdir)
-	str_inp = [ str(x) for x in inp ]
-	subprocess.run(str_inp)
-	name = os.path.basename(i)[:-4]
-	os.remove(i)
-	if os.path.exists(f'{inputdir}{name}_A.pdb'):
-		os.rename(f'{inputdir}{name}_A.pdb',f'{inputdir}{name}.pdb')
+for unclean in glob.glob(f'{inputdir}*.pdb'):
+	clean(unclean)
 
 # generate pockets
 find_pockets(inputdir,alpha)
 
-name_array=[]
-for name in glob.glob(f'{inputdir}*_out/*_out.pdb'):
-	name_array.append(os.path.basename(name))
+name_array=[os.path.basename(name) for name in glob.glob(f'{inputdir}*_out/*_out.pdb')]
 
 for entry in name_array:
-	pock_array=[]
-	pocket_id=[]
-	uniq=[]
-	with open(f'{inputdir}{entry[:-4]}/{entry}','r') as infile:
-		for line in infile:
-			if not "STP" in line:
-				continue
-			elif "STP" in line:
-				pock_array.append(line)
-				pocket_id.append(int(line.split()[5]))
-	
-	uniq = unique(pocket_id)
-	for i in range(0,len(uniq)):
-		j=i+1
-		a = pocket_id.count(j)
-		if a < cutoff:
-			with open(f'{inputdir}{entry.split("_")[0]}.pocket{j}.pdb','w') as outfile:
-				for line in pock_array:
-					if line.split()[5] == uniq[i]:
-						outfile.write(line)
-					else:
-						continue
-		else:
-			continue
+	writePockets(inputdir,entry,cutoff)
 
 # center and align pockets
-prealigned=[]
-for name in glob.glob(f'{inputdir}*.pocket*'):
+prealigned = []
+for name in glob.glob(f'{inputdir}*.pocket*.pdb'):
 	stem = os.path.basename(name).split('.')
 	prealigned.append([stem[0],stem[1]])
 
-
-###########################################use the class now##################
+tracker = []
 for entry in prealigned:
 	print(entry)
+	tracker.append(f'{entry[0]}.{entry[1]}')
 	coordsystem = Coordinates(inputdir,entry[0],pnum=entry[1])
 	coords = coordsystem.getCoords()
 	centered = coordsystem.center(coords)
@@ -117,7 +89,7 @@ for entry in prealigned:
 	aligned = coordsystem.align(centered,vector)
 	coordsystem.makePDB(aligned)
 
-### generate surf files and run VASP on pockets
+# generate surf files and run VASP on pockets
 # check to see if VASP scores and VASP pockets directory exists
 if not os.path.exists(f'{outputdir}VASP'):
 	os.mkdir(f'{outputdir}VASP')
@@ -126,28 +98,49 @@ if not os.path.exists(f'{outputdir}VASP/scores'):
 if not os.path.exists(f'{outputdir}VASP/pockets'):
 	os.mkdir(f'{outputdir}VASP/pockets')
 
-### make for loop here ###
-tracker = []
-for pocket in glob.iglob(f'{inputdir}aligned.*'):
-	name = os.path.basename(pocket)
-	name = f"{name.split('.')[1]}.{name.split('.')[2]}"
-	tracker.append(name)
+# conformational sampling for initial screen
+shortSample = genShortSample(initialdir)
+s = len(shortSample)
+
+# target pocket volume
+vol = float([line.split() for line in open(f'{initialdir}vol.txt','r').readlines()][-1][-1])
 
 for i,structure in enumerate(tracker):
+	# dummy variables to guide conformational sampling
+	tSamp = np.full(6,True)
+	print(f'-----Running on: {structure}-----')
+	
 	# get surf file
 	gen_surfs(outputdir,inputdir,structure)
 	
-	# run intersect VASP on each structure
-	intersect(outputdir,initialdir,structure,i*1800,len(tracker)*1800)
+	# run short screen of intersect VASP on each structure
+	#### Counter is fucked up now #####
+	intersect(outputdir,initialdir,structure,0,s,
+				shortSample,full=False)
+	
+	# get scores and update scorefile
+	extractScore(outputdir,structure)
+	originalVolume(outputdir,structure)
+	genScorefile(outputdir,structure,min_intersect,vol)
+	
+	result, tSamp = screenCheck(outputdir, structure, screen*vol, tSamp)
 
-	# extract each score
-	extract_score(outputdir,structure)
+	# only perform full intersect sampling if initial screen passed,
+	# also performs only translations in directions that pass Samp
+	if np.any(np.append(result,tSamp)):
+		print(f'-----Full Screen on: {structure}-----')
+		longSample = genLongSample(initialdir,shortSample,result,tSamp)
+		intersect(outputdir,initialdir,structure,i*1800,
+				  len(tracker)*1800,longSample)
 
-	# get the original volume of each pocket
-	original_volume(outputdir,structure)
+		# extract each score
+		extractScore(outputdir,structure)
 
-	# append scorefile
-	generate_scorefile(outputdir,initialdir,min_intersect,structure)
+		# append scorefile
+		genScorefile(outputdir,structure,min_intersect,vol)
 
 	# prep for ROSETTA
 	rosetta_prep(outputdir,inputdir,min_intersect,min_hits,structure)
+
+# move scored structures
+moveScoredStructures(outputdir,inputdir)

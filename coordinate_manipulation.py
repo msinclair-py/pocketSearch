@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 import numpy as np
-from numba import njit
 from scipy.spatial.transform import Rotation as R
 
 
 class Coordinates:
+	"""
+	This class is intended to perform a variety of point cloud manipulations.
+	"""
 
 	def __init__(self,directory,pdb,pnum=None,deg1=None,deg2=None,
 			translation=None,rotate=None,mode=1):
@@ -32,11 +34,6 @@ class Coordinates:
 			for i in range(initcoords.shape[0]):
 				l = lines[i]
 				initcoords[i] = [l[30:38].strip(),l[38:46].strip(),l[46:54].strip()]
-#			initcoords = np.genfromtxt(f'{self.directory}{self.pdb}.pocket.pdb',
-#				dtype=float,usecols=(6,7,8))
-#		else:
-#			initcoords = np.genfromtxt(f'{self.directory}{self.pdb}.{self.pnum}.pdb',
-#				dtype=float,usecols=(6,7,8))
 		return initcoords
 
 	
@@ -53,7 +50,7 @@ class Coordinates:
 	#center array based on geometric center of mass
 	def center(self,array):
 		centered = np.zeros((array.shape[0],array.shape[1]))
-		com = array.mean(0)
+		com = np.mean(array, axis=0)
 		for i in range(array.shape[0]):
 			centered[i] = array[i] - com
 		return centered
@@ -98,7 +95,6 @@ class Coordinates:
 
 
 	#conformation generation/flow control function
-	@njit
 	def conformation(self,array,conformations):
 		for i in range(len(conformations)):
 			deg = conformations[i]
@@ -114,7 +110,7 @@ class Coordinates:
 	def rotate(self,array,conf,tilted,trans,flipped):
 		rotated_array=np.array([])
 
-		for i in range(self.rotates):
+		for i in range(1,self.rotates+1):
 			deg = i*int(self.deg1)
 			z_rot = R.from_euler('z',deg,degrees=True)
 			rotated_array = z_rot.apply(array)
@@ -156,10 +152,10 @@ class Coordinates:
 		#iterate through list of translations, performing all previous
 		#conformational changes
 		translations = [xpos,xneg,ypos,yneg,zpos,zneg]
-		for i in range(1,len(translations)):
-			self.makePDB(translations[i],conf,0,0,i,0)
-			self.tilt(translations[i],conf,0,i,0)
-			self.flip(translations[i],conf,i)
+		for i in range(len(translations)):
+			self.makePDB(translations[i],conf,0,0,i+1,0)
+			self.tilt(translations[i],conf,0,i+1,0)
+			self.flip(translations[i],conf,i+1)
 
 
 	#180 degree flip function
