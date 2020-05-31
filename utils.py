@@ -514,7 +514,7 @@ def genScorefile(outdir,struc,filt,vol):
 	
 	# add current structure to currentScorefile prior to sorting
 	# concatenate requires same shape so reshape structure to be a 2d array
-	currentStructure = np.array([pdb,pock,vol,v,bestScore,bestScore/vol,hitCounter]).reshape(1,7)
+	currentStructure = np.array([pdb,pock,vol,v,bestScore,float(bestScore/vol),hitCounter]).reshape(1,7)
 	if currentScorefile.shape[0] == 0:
 		currentScorefile = currentStructure
 	else:
