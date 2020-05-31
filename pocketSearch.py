@@ -142,5 +142,5 @@ for i,structure in enumerate(tracker):
 	# prep for ROSETTA
 	rosetta_prep(outputdir,inputdir,min_intersect,min_hits,structure)
 
-# move scored structures
-moveScoredStructures(outputdir,inputdir)
+# move scored structures ### currently broken
+#moveScoredStructures(outputdir,inputdir)
