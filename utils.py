@@ -467,7 +467,7 @@ def genScorefile(outdir,struc,filt,vol):
 	print(struc)	
 	pdb = struc.split('.')[0]
 	pock = struc.split('.')[1]
-	v = float([line.split() for line in open(f'{outdir}VASP/pockets/{pdb}_{pock}.vol.txt','r').readlines()][-1][-1])
+	v = float([line.split() for line in open(f'{outdir}VASP/pockets/{pdb}_{pock}.vol.txt').readlines()][-1][-1])
 
 	# list of all scorefiles to extract data from
 	scores = [s for s in glob.iglob(f'{outdir}VASP/scores/*{pdb}_{pock}*')]
@@ -479,7 +479,7 @@ def genScorefile(outdir,struc,filt,vol):
 	print(f'-----Getting {pdb} {pock} Scores-----')
 	# iterate through all scores and track hits and best int%
 	for score in scores:
-		curScore = float([lines.split() for lines in open(score,'r').readlines()][-1][-1])
+		curScore = float([lines.split() for lines in open(score).readlines()][-1][-1])
 		if not bestScore or curScore > bestScore:
 			bestScore = curScore
 		if curScore/vol > filt:
@@ -514,7 +514,7 @@ def genScorefile(outdir,struc,filt,vol):
 	
 	# add current structure to currentScorefile prior to sorting
 	# concatenate requires same shape so reshape structure to be a 2d array
-	currentStructure = np.array([pdb,pock,vol,v,bestScore,float(bestScore/vol),hitCounter]).reshape(1,7)
+	currentStructure = np.array([pdb,pock,vol,v,bestScore,f'{float(bestScore)/float(vol):.3f}',hitCounter]).reshape(1,7)
 	if currentScorefile.shape[0] == 0:
 		currentScorefile = currentStructure
 	else:
@@ -529,12 +529,12 @@ def genScorefile(outdir,struc,filt,vol):
 	# argsort is ascending [::-1] makes it descending
 	if currentScorefile.shape[0] > 1:
 		currentScorefile = currentScorefile[currentScorefile[:,-2].astype(float).argsort()[::-1]]
-
+	
 	# being certain that the relevant info is correct rewrite scorefile
 	with open(f'{outdir}score.txt','w') as sfile:
 		sfile.write(header)
 		for l in currentScorefile:
-			line = f'{l[0]:<6}{l[1]:<8}{l[2]:{12}.{8}}{l[3]:{12}.{8}}{l[4]:{10}.{7}}{l[5]:.3f}{l[6]:>5}'
+			line = f'{l[0]:<6}{l[1]:<8}{l[2]:{12}.{8}}{l[3]:{12}.{8}}{l[4]:{10}.{7}}{float(l[5]):.3f}{l[6]:>5}'
 			sfile.write(f'{line}\n')
 
 
