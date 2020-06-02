@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import os, glob, subprocess, random, Bio
+import os, glob, subprocess, random, Bio, shutil
 import numpy as np
 from aliases import fpocket,surf,vasp,pdblist
 from Bio.PDB import PDBList
@@ -243,9 +243,11 @@ def find_pockets(indir,alphas):
 	"""
 
 	for i in glob.glob(f'{indir}*.pdb'):
-		args=(fpocket,'-f',i,'-i',alphas)
-		str_args=[ str(x) for x in args ]
-		subprocess.run(str_args)
+		root = os.path.basename(i).split('.')[0]
+		if not os.path.exists(f'{indir}{root}_out/'):
+			args=(fpocket,'-f',i,'-i',alphas)
+			str_args=[ str(x) for x in args ]
+			subprocess.run(str_args)
 	
 
 def gen_surfs(outdir,indir,pocket):
@@ -269,7 +271,7 @@ def gen_surfs(outdir,indir,pocket):
 	subprocess.run(str_arg, stdout=out)
 
 
-def intersect(outdir,initial,pocket,count,total,catalogue,full=True):
+def intersect(outdir,initial,pocket,snum,total,samples,catalogue,full=True):
 	"""
 	Run intersect VASP on given pocket.
 
@@ -278,8 +280,9 @@ def intersect(outdir,initial,pocket,count,total,catalogue,full=True):
 		initial - directory containing target structures
 				that will be intersected with given pocket
 		pocket - pocket structure to be tested against target
-		count - running count metric for progress display
-		total - total count metric for progress display
+		snum - structure number, for progress display
+		total - total number of structures, for progress display
+		samples - number of conformations being sampled for display
 		catalogue - list of target structures to intersect
 		full - kwarg that guides behavior of the function,
 				when False additional analysis is performed
@@ -289,7 +292,7 @@ def intersect(outdir,initial,pocket,count,total,catalogue,full=True):
 	Outputs:
 		None, runs VASP for user-specified catalogue
 	"""
-
+	count = 0
 	struc = f'{outdir}VASP/pockets/{pocket.split(".")[0]}_{pocket.split(".")[1]}.SURF'
 	n = f"{pocket.split('.')[0]}_{pocket.split('.')[1]}"
 
@@ -304,8 +307,10 @@ def intersect(outdir,initial,pocket,count,total,catalogue,full=True):
 			modulo = 25
 		else:
 			modulo = 5
+		if (count%500==0):
+			print(f'-----{snum+1}/{total} pockets to be sampled-----')
 		if (count%modulo==0):
-			print(f'{pocket}: {count}/{total}')
+			print(f'{pocket}: {count}/{samples} conformations')
 
 		fname = os.path.basename(init).split('.')
 		conf = fname[1]
@@ -387,7 +392,8 @@ def extractScore(outdir,pocket):
 		returns None, runs SURF -surveyVolume to generate scores
 	"""
 	
-	for inter in glob.iglob(f"{outdir}VASP/{pocket.split('.')[0]}_{pocket.split('.')[1]}/*"):
+	n, pock = pocket.split('.')[0], pocket.split('.')[1]
+	for inter in glob.iglob(f"{outdir}VASP/{n}_{pock}/*.SURF"):
 		p = os.path.basename(inter).split('.')
 		na = p[1]
 		co = p[2]
@@ -396,7 +402,7 @@ def extractScore(outdir,pocket):
 		tr = p[5]
 		fl = p[6]
 		arg = (surf,'-surveyVolume',inter)
-		out = open(f'{outdir}VASP/scores/{na}_{co}_{ro}_{ti}_{tr}_{fl}_iscore.txt','w')
+		out = open(f'{outdir}VASP/{n}_{pock}/{na}_{co}_{ro}_{ti}_{tr}_{fl}_iscore.txt','w')
 		str_arg = [ str(x) for x in arg ]
 		subprocess.run(str_arg, stdout=out)
 
@@ -419,7 +425,7 @@ def screenCheck(outdir, pocket, cut, _tSamp):
 	p = pocket.split('.')[1]
 
 	# check small screen first
-	sText = f'{outdir}VASP/scores/{n}_{p}_conf0*_0_0_iscore.txt'
+	sText = f'{outdir}VASP/{n}_{p}/{n}_{p}_conf0*_0_0_iscore.txt'
 	values = np.array([float([lines.split() for lines in open(struc,'r')][-1][-1])
 						for struc in glob.glob(sText)])
 	if np.where(values > cut)[0].size > 0:
@@ -427,7 +433,7 @@ def screenCheck(outdir, pocket, cut, _tSamp):
 
 	for i in range(len(_tSamp)):
 		tInt = [line.split() for line in \
-				open(f'{outdir}VASP/scores/{n}_{p}_conf0_0_0_{i+1}_0_iscore.txt').readlines()][-1][-1]
+				open(f'{outdir}VASP/{n}_{p}/{n}_{p}_conf0_0_0_{i+1}_0_iscore.txt').readlines()][-1][-1]
 		if float(tInt) < cut:
 			_tSamp[i] = False
 
@@ -470,7 +476,7 @@ def genScorefile(outdir,struc,filt,vol):
 	v = float([line.split() for line in open(f'{outdir}VASP/pockets/{pdb}_{pock}.vol.txt').readlines()][-1][-1])
 
 	# list of all scorefiles to extract data from
-	scores = [s for s in glob.iglob(f'{outdir}VASP/scores/*{pdb}_{pock}*')]
+	scores = [s for s in glob.glob(f'{outdir}VASP/{pdb}_{pock}/*_iscore.txt')]
 
 	hitCounter = 0
 	bestScore = 0
@@ -538,83 +544,22 @@ def genScorefile(outdir,struc,filt,vol):
 			sfile.write(f'{line}\n')
 
 
-
-def generate_scorefile(outdir,struc,filt): #####OBSOLETE
+def deleteSurfs(structure, outdir):
 	"""
-	Generates formatted scorefile for all existing intersect scores.
+	In an effort to keep the data footprint small, delete surf files. this
+	should only be called after scorefile has been written out.
 	Inputs:
-		outdir - output directory for scorefile, also in the filepath
-				of the intersect scores
-		struc - structure to be scored
-		filt - int% filter
+		structure - name of structure to delete files for
+		outdir - directory in filepath of surf files
 	Outputs:
-		returns None, writes scorefile in output directory
+		returns None, deletes appropriate files
 	"""
 	
-	files,name_array,inter,pockets=[],[],[],[]
-	for name in glob.iglob(f'{outdir}VASP/scores/*iscore.txt'):
-		score = os.path.basename(name)
-		files.append(score)
-	
-	for name in files:
-		name_array.append(name.split('_'))
-	
-	print('-----Getting Scores-----')
-	for i, line in enumerate(name_array):
-		name = f'{outdir}VASP/scores/{files[i]}'
-		a=name_array[i]
-		with open(name,'r') as infile:
-			for line in infile:
-				pass
-			iline = float(line.split()[3])
-			inter.append([a[0],a[1],a[2],a[3],a[4],a[5],a[6],iline])
-
-	print('-----Sorting Scores-----')
-	inter_sort,inter_final=[],[]
-	inter_sort = sorted(inter,key=lambda x: x[-1], reverse=True)
-
-	with open(f'{initial}vol.txt','r') as f:
-		for line in f:
-			pass
-		vline = line.split()[-1]
-	
-	vols={}
-	for p in inter_sort:
-		with open(f'{outdir}VASP/pockets/{p[0]}_{p[1]}.vol.txt','r') as f:
-			for line in f:
-				pass
-			key = f'{p[0]} {p[1]}'
-			vol = line.split()[-1]
-			vols.update({key: vol})
-	
-	tracker=[]
-	hits={}
-
-	for j in range(len(inter_sort)):
-		key = f'{inter_sort[j][0]} {inter_sort[j][1]}'
-		if [inter_sort[j][0],inter_sort[j][1]] not in tracker:
-			tracker.append([inter_sort[j][0],inter_sort[j][1]])
-			inter_final.append(inter_sort[j])
-			hits.update({key: 0})
-
-		if float(inter_sort[j][-1])/float(vline) > float(filt):
-			count = hits.get(key)+1
-			hits.update({key : count})
-
-	print('-----Outputting scores-----')
-	print(inter_final)
-	with open(f'{outdir}score.txt','w') as outfile:
-		outfile.write('PDB   Pock      Target Vol   Pock Vol      Int Vol   Int %  # hits\n')
-		for i in range(len(inter_final)):
-			a=inter_final[i][0]
-			p=inter_final[i][1]
-			b=hits.get(f'{a} {p}')
-			v=vols.get(f'{a} {p}')
-			c=float(inter_final[i][-1])/float(vline)
-			d=inter_final[i][-1]
-			out=f"{a:<6}{p:<11}{vline:{12}.{8}}{v:{12}.{8}} {d:{9}.{7}} {c:{6}.{3}}    {b}\n"
-			outfile.write(out)
-
+	print(f'-----Cleaning up {structure} SURF/VASP files-----')
+	n, p = structure.split('.')[0], structure.split('.')[1]
+	shutil.rmtree(f'{outdir}VASP/{n}_{p}')
+	os.remove(f'{outdir}VASP/pockets/{n}_{p}.SURF')
+	os.remove(f'{outdir}VASP/pockets/{n}_{p}.vol.txt')
 
 
 def moveScoredStructures(outdir,pdbdir):
@@ -635,22 +580,22 @@ def moveScoredStructures(outdir,pdbdir):
 	pdbs = [pdb.split('/')[-1][:4] for pdb in glob.glob(f'{pdbdir}*.pdb') if len(pdb.split('/')[-1]) == 8]
 	
 	if scores.size > 7:
-		notScored = np.setdiff1d(scores[:,0],np.array(pdbs))
+		notScored = np.setdiff1d(np.array(pdbs),scores[:,0])
 	else:
-		notScored = np.setdiff1d(scores[0],np.array(pdbs))
+		notScored = np.setdiff1d(np.array(pdbs),scores[0])
 
-	# if there any unscored pdbs remove them from the pdb list using
-	# a boolean mask with numpy.isin function
-	if notScored.size > 0:
-		scored = np.setdiff1d(pdbs,notScored)
+	scored = scores[:,0]
 	
 	path = f'{outdir}scored_pdbs/'
 
 	if not os.path.exists(path):
 		os.mkdir(path)
 
+	# if pdb still in pdbdir and not in scored pdbs, move it there
 	for pdb in scored:
-		shutil.move(f'{pdbdir}{pdb}.pdb',path)
+		if os.path.exists(f'{pdbdir}{pdb}.pdb'):
+			if not os.path.exists(f'{path}{pdb}.pdb'):
+				shutil.move(f'{pdbdir}{pdb}.pdb',path)
 
 
 def rosetta_prep(outdir,indir,filt,hilt,pocket):

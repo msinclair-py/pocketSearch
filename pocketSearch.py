@@ -75,8 +75,11 @@ for entry in name_array:
 # center and align pockets
 prealigned = []
 for name in glob.glob(f'{inputdir}*.pocket*.pdb'):
+	# check if original pdb still there, if not it has been scored already
+	# and this structure should be skipped
 	stem = os.path.basename(name).split('.')
-	prealigned.append([stem[0],stem[1]])
+	if os.path.exists(f'{inputdir}{stem[0]}.pdb'):
+		prealigned.append([stem[0],stem[1]])
 
 tracker = []
 for entry in prealigned:
@@ -101,6 +104,7 @@ if not os.path.exists(f'{outputdir}VASP/pockets'):
 # conformational sampling for initial screen
 shortSample = genShortSample(initialdir)
 s = len(shortSample)
+t = len(tracker)
 
 # target pocket volume
 vol = float([line.split() for line in open(f'{initialdir}vol.txt','r').readlines()][-1][-1])
@@ -114,8 +118,7 @@ for i,structure in enumerate(tracker):
 	gen_surfs(outputdir,inputdir,structure)
 	
 	# run short screen of intersect VASP on each structure
-	#### Counter is fucked up now #####
-	intersect(outputdir,initialdir,structure,0,s,
+	intersect(outputdir,initialdir,structure,i,t,s,
 				shortSample,full=False)
 	
 	# get scores and update scorefile
@@ -130,8 +133,8 @@ for i,structure in enumerate(tracker):
 	if np.any(np.append(result,tSamp)):
 		print(f'-----Full Screen on: {structure}-----')
 		longSample = genLongSample(initialdir,shortSample,result,tSamp)
-		intersect(outputdir,initialdir,structure,i*1800,
-				  len(tracker)*1800,longSample)
+		intersect(outputdir,initialdir,structure,i,t,
+				  len(longSample),longSample)
 
 		# extract each score
 		extractScore(outputdir,structure)
@@ -142,5 +145,9 @@ for i,structure in enumerate(tracker):
 	# prep for ROSETTA
 	rosetta_prep(outputdir,inputdir,min_intersect,min_hits,structure)
 
-# move scored structures ### currently broken
-#moveScoredStructures(outputdir,inputdir)
+	# remove surf/vasp files. they take up an enormous amount of storage
+	# otherwise (~500Mb per structure ran)
+	deleteSurfs(structure,outputdir)
+
+	# move scored structures
+	moveScoredStructures(outputdir,inputdir)
