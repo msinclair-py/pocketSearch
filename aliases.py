@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
 # full filepath to your installation of fpocket 3.1
-fpocket = '/home/matt/Software/fpocket/bin/fpocket'
+fpocket = '/root/apps/software/fpocket'
 
 # full filepath to both SURF and VASP
-surf = '/home/matt/Software/VASPreleasePack/codeRelease/surfProcessingRelease/debug/surfProcessing'
-vasp = '/home/matt/Software/VASPreleasePack/codeRelease/vaspRelease/debug/vasp'
+surf = '/root/apps/software/surfProcessing'
+vasp = '/root/apps/software/vasp'
 
 # full filepath to your list of pdbs to query
 pdblist = '../pdb_list.txt'
