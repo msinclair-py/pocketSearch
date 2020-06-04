@@ -24,7 +24,7 @@ parser.add_argument('-ht','--hits', dest='hilt', default=1,
 		metavar='H', help='Minimum number of %% identity hits')
 parser.add_argument('-r','--rand', dest='rand', default=100,
 		metavar='R', help='Number of random structure to download, if random mode selected')
-parser.add_argument('-s','--screen', dest='screen', default=0.3,
+parser.add_argument('-s','--screen', dest='screen', default=0.5,
 		metavar='S', help='Short screen filter to determine whether \
 						translational sampling occurs')
 

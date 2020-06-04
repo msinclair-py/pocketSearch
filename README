@@ -6,19 +6,25 @@ A program that combines the pocket detecting, nearest neighbor
 algorithms of fpocket 3.1 with the Voronoi diagram building and
 analysis programs, SURF/VASP to qualify good candidates for protein
 engineering. The output of this program is a Rosetta pose file for
-computational mutagenesis.
+computational mutagenesis to further screen candidates for wet lab
+mutagenesis, and catalysis analysis.
 
 -------------
 initialize.py
 -------------
 This script takes 3 mandatory, positional arguments at runtime. These do
 not require any flags. The arguments are: 
+
 1) the pdb (e.g. 1m1n.pdb or just 1m1n, either will work)
-2) the directory containing the fpocket output of the pdb
+2) the directory containing the fpocket output of the pdb (Note: This
+	isn't the actual fpocket pdb_out/ directory, just the filepath where
+	this output directory can be found)
 3) the number of the pocket from fpocket you are trying
     to match (e.g. 1)
 
-The additional arguments include:
+The additional arguments are all parameters for conformation generation;
+	all angles are in degrees, not radians:
+
 the rotational degrees for precession (-r or --r_angle flag; 30 by default)
 the tilt angle (-t or --t_angle flag; 10 by default)
 the translational shift (-s or --shift flag; 2 by default)
@@ -28,6 +34,7 @@ pocketSearch.py
 ---------------
 This script takes 3 mandatory, positional arguments at runtime. These do 
 not require any flags. The arguments are:
+
 1) the input directory (where the pdbs to be tested from rcsb are located)
 2) the output directory (this is where the VASP outputs and the score file
     will be located after the run)
@@ -36,10 +43,11 @@ not require any flags. The arguments are:
     conformations are located from the initialize scripts)
 
 The additional arguments include:
-mode of pdb download (random set, fixed set or skip download; skip by default;
-    -m or --mode flag)
+
+mode of pdb download (-m or --mode flag; random or skip download; skip by default)
 min alpha spheres in fpocket (-a or --alpha flag; 80 by default)
 max alpha spheres (-c or --cutoff flag; 150 by default)
 percent filter (-f or --filter flag; .7 by default)
 hit filter (-ht or --hits flag; 1 by default)
-random pdb download amount (-r or --rand flag; 100 by default)
+number of random structures to download if -m random (-r or --rand flag; 100 by default)
+minimal screen filter for initial screen (-s or --screen; 0.5 by default)

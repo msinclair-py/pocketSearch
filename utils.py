@@ -540,7 +540,7 @@ def genScorefile(outdir,struc,filt,vol):
 	with open(f'{outdir}score.txt','w') as sfile:
 		sfile.write(header)
 		for l in currentScorefile:
-			line = f'{l[0]:<6}{l[1]:<8}{l[2]:{12}.{8}}{l[3]:{12}.{8}}{l[4]:{10}.{7}}{float(l[5]):.3f}{l[6]:>5}'
+			line = f'{l[0]:<6}{l[1]:<8}{l[2]:^{15}.{8}}{l[3]:{12}.{8}}{l[4]:{10}.{7}}{float(l[5]):.3f}{l[6]:>6}'
 			sfile.write(f'{line}\n')
 
 
