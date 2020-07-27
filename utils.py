@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import os, glob, subprocess, random, Bio, shutil
 import numpy as np
+from scipy.spatial.distance import cdist
 from aliases import fpocket,surf,vasp,pdblist
 from Bio.PDB import PDBList
 
@@ -69,6 +70,98 @@ def formatPDBs(directory):
 			os.rename(f,f'{directory}{new}')
 
 
+def getInfo(structure, directory):
+	"""
+    Obtain relevant information for each structure (protein name,
+    experimental method, resolution, any cofactors).
+    Inputs:
+        structure - protein to extract info of
+        directory - pdb directory where structure can be found
+    Outputs:
+        returns None, writes info to file in pdb directory
+	"""
+	
+	# read file
+	reader = []
+	with open(f'{directory}{structure}','r') as f:
+		for line in f:
+			reader.append(line)
+	
+	# obtain title
+	titleArr = []
+	for line in reader:
+		if 'TITLE' in line:
+			titleArr.append(line)
+		
+	for i, entry in enumerate(titleArr):
+		if i > 0:
+			line = ' '.join(entry.split()[2:])
+			title = f'{title} {line}'
+		else:
+			title = ' '.join(entry.split()[1:])
+
+	# obtain experimental info
+	expArr = []
+	for line in reader:
+		if 'EXPDTA' in line:
+			expArr.append(line)
+		if 'RESOLUTION.' in line:
+			expArr.append(line)
+
+	if len(expArr) > 1:
+		method = ' '.join(expArr[0].split()[1:])
+		resolution = ' '.join(expArr[1].split()[-2:])
+		exp_info = f'{method}: {resolution}'
+	else:
+		exp_info = 'NONE'
+
+	# obtain cofactor info
+	coflines = []
+	for line in reader:
+		if 'HETNAM' in line: # need to somehow handle multiline cofactors
+			coflines.append(line)
+	
+	# go through extracted lines to get relevant cofactor information
+	if coflines:
+		multiples = 0
+		cofs = []
+	
+		for i in range(len(coflines)):
+			# identify the current cofactor
+			current = coflines[i].split()[1]
+		
+			# if there are multiple lines the the 3-letter code will instead
+			# be the line number of the current cofactor
+			if len(current) < 2:
+				multiples += 1
+				# get entry index of current cofactor in the cofs array
+				Idx = i - multiples
+			
+				# append cofactor name to existing entry
+				joined = f'{cofs[Idx].split(":")[1].strip()}{"".join(coflines[i].split()[3:])}'
+				cofs[Idx] = ': '.join([cofs[Idx].split(':')[0].strip(),joined,'Not present'])
+
+			# first line of cofactor, just append to cofs
+			else:
+				cofactor = ' '.join(coflines[i].split()[2:])
+				cofs.append(': '.join([current,cofactor,'Not present']))
+	
+		cofactors = '; '.join(cofs)
+	
+	else:
+		cofactors = 'NONE'
+
+	# write out all info to file
+	if not os.path.exists(f'{directory}infofiles/'):
+		os.mkdir(f'{directory}infofiles/')
+
+	outfile = f'{directory}infofiles/{structure[:-4]}.info'
+	with open(outfile, 'w') as out:
+		out.write(f'{title}\n')
+		out.write(f'{exp_info}\n')
+		out.write(f'{cofactors}')                                 
+
+
 def clean(structure):
 	"""
 	PDBs straight from RCSB have a lot of information we don't care about.
@@ -101,6 +194,12 @@ def clean(structure):
 	# put the new numbering back into each line
 	final = [f'{line[:22]}{renumbered[i]:>4}{line[26:]}' for i, line in enumerate(highest)]
 
+	# move original pdb file
+	(dirname, filename) = os.path.split(structure)
+	fpath = f'{dirname}/original_pdbs/'
+
+	shutil.move(structure, f'{fpath}{filename[:-4]}_orig')
+
 	with open(structure,'w') as outfile:
 		for line in final:
 			outfile.write(line)
@@ -131,6 +230,92 @@ def writePockets(directory, pock, maximum):
 		if a < maximum:
 			outfile = open(f'{directory}{pock.split("_")[0]}.pocket{j}.pdb','w')
 			[outfile.write(line) for line in pock_array if int(line[22:26].strip()) == uniq[i]]
+
+
+def identifyCofactors(directory):
+	"""
+	Iterate through each generated pocket that passes filters to identify
+	which, if any, cofactors would have inhabited the pocket. This is
+	accomplished via a simple shortest distance algorithm on the pocket prior
+	to centering and alignment.
+	Inputs:
+		directory - filepath to generated pockets
+	Outputs:
+		returns None, rewrites each .info file to reflect pocket matching each
+			cofactor
+	"""
+	
+	# generate a list of every pocket, skips over aligned pockets if this is
+	# a restart run due to aligned pockets lacking the .pdb extension
+	all_pockets = [ p for p in glob.glob(f'{directory}*pocket*.pdb') ]
+
+	# go through each pocket to determine if it inhabits a cofactor's space
+	for pocket in all_pockets:
+		base = os.path.basename(pocket)
+		pnum = base.split('.')[1]
+
+		# location and name of corresponding infofile
+		infodir = f'{directory}infofiles/'
+		infofile = f'{infodir}{base[:4]}.info'
+		
+		# read whole infofile, specifically take the cofactor line for now
+		infolines = [line for line in open(infofile).readlines()]
+		cofactline = infolines[-1]
+		
+		if cofactline != 'NONE':
+			# cofactor format is - 3 letter code: full name: pocket#/'Not present'; .....
+			cofactors = [c.split(':')[0].strip() for c in cofactline.split(';')]
+
+			# get pocket coordinates
+			c = [[l[30:38].strip(),l[38:46].strip(),l[46:54].strip()] for l in open(pocket).readlines()]
+
+			# extract all heteroatom coordinate lines from original pdb
+			cof = [line for line in open(f'{directory}original_pdbs/{base[:4]}_orig').readlines() if line[:6] == 'HETATM']
+
+			# generate array where 0 = cofactor not in pocket, 1 = cofactor in pocket
+			# initially all cofactors set to 0
+			cof_present = np.array([[c,0] for c in cofactors])
+			for i, cofactor in enumerate(cofactors):
+				# get specific cofactor coordinates
+				c2 = [[l[30:38].strip(),l[38:46].strip(),l[46:54].strip()] for l in cof if l[17:20].strip() == cofactor]
+
+				# measure minimum pairwise euclidean distance of cofactor and pocket coords
+				d = np.min(np.min(cdist(c, c2, 'euclidean')))
+
+				# cofactor occupacy of pocket defined as <1 angstrom, set array to 1
+				if d < 1:
+					cof_present[np.where(cof_present == cofactor)[0][0],1] = 1
+
+			# identified array tracks any changes to make to infofile
+			identified = []
+			for i, cofactor in enumerate(cofactline.split(';')):
+				# info contains just the info for the current cofactor
+				info = [c.strip() for c in cofactor.split(':')]
+
+				# if the entry for this cofactor in cof_present is '1', it occupies this pocket
+				if cof_present[np.where(cof_present == info[0])[0][0],1] == '1':
+					# if this cofactor HAS NOT been assigned a pocket, assign this one
+					if info[-1] == 'Not present':
+						info[-1] = pnum
+					# if this cofactor HAS been assigned a pocket, append this one
+					else:
+						info[-1] = ', '.join([info[-1],pnum])
+				identified.append(info)
+
+			# generate the updated cofactor info line
+			new_cofline = []
+			for i in range(len(identified)):
+				cur = ': '.join(identified[i])
+				if i > 0:
+					new_cofline = '; '.join([new_cofline, cur])
+				else:
+					new_cofline = cur
+
+			# write out updated infofile
+			with open(infofile,'w') as out:
+				out.write(f'{infolines[0]}')
+				out.write(f'{infolines[1]}')
+				out.write(f'{new_cofline}')
 
 
 def principal (array):
@@ -458,18 +643,20 @@ def originalVolume(outdir,p):
 	subprocess.run(str_arg, stdout=out)
 
 
-def genScorefile(outdir,struc,filt,vol):
+def genScorefile(outdir,pdbdir,struc,filt,vol):
 	"""
 	Generates scorefile. Checks if structure has been written to file before
 	and outputs updated values if so. 
 	Inputs:
 		outdir - output directory containing filepath for scores and scorefile
+		pdbdir - directory containing original pdbs and infofiles
 		struc - pocket to append score to file
 		filt - int% filter, used to count number of hits
 		vol - volume of target pocket
 	Outputs:
 		returns None, appends values to scorefile
 	"""
+
 	print(struc)	
 	pdb = struc.split('.')[0]
 	pock = struc.split('.')[1]
@@ -493,7 +680,9 @@ def genScorefile(outdir,struc,filt,vol):
 		curScore = 0
 
 	print('-----Updating Scorefile-----')
-	header = 'PDB   Pock      Target Vol   Pock Vol    Int Vol   Int %  #hits\n'
+	header = 'PDB   Pock      Target Vol   Pock Vol    Int Vol   Int %  #hits'
+	addl = 'Exp. Method       Cofactor(s)         Protein Name\n'
+	header = '  '.join([header,addl])
 	# read scorefile lines and check if structure has been reported before
 	# if so we will inherit the current number of hits and update our counter
 	if not os.path.exists(f'{outdir}score.txt'):
@@ -501,13 +690,14 @@ def genScorefile(outdir,struc,filt,vol):
 			sfile.write(header)
 		sfile.close()
 	
-	currentScorefile = np.genfromtxt(f'{outdir}score.txt',skip_header=1,dtype='unicode')
+	currentScorefile = np.genfromtxt(f'{outdir}score.txt',delimiter=';',skip_header=1,dtype='unicode',autostrip=True)
 
-	# if shape > 0 then array not empty; if size > 7 there is more than one entry.
+	# if shape > 0 then array not empty; if size > 10 there is more than one entry.
 	# this is relevant because the 1D array will throw IndexError with the array
 	# indexing passed to search the first two columns
 	if currentScorefile.shape[0] > 0:
-		if currentScorefile.size > 7:
+		currentScorefile = currentScorefile.reshape(int(currentScorefile.size/10),10)
+		if currentScorefile.size > 10:
 			for i, line in enumerate(currentScorefile[:,:2]):
 				if pdb in line:
 					if pock in line:
@@ -517,10 +707,24 @@ def genScorefile(outdir,struc,filt,vol):
 			if pdb in currentScorefile:
 				if pock in currentScorefile:
 					hitCounter += int(currentScorefile[-1])
+					# if this is the first entry in the scorefile and it is also a duplicate,
+					# the original line must be erased so there aren't duplicate entries.
+					# this will trigger the downstream behavior to treat it as if it is the
+					# first entry in the scorefile again.
+					currentScorefile = np.array([])
 	
 	# add current structure to currentScorefile prior to sorting
 	# concatenate requires same shape so reshape structure to be a 2d array
-	currentStructure = np.array([pdb,pock,vol,v,bestScore,f'{float(bestScore)/float(vol):.3f}',hitCounter]).reshape(1,7)
+	# first, acquire the info on this structure
+	info = [line for line in open(f'{pdbdir}infofiles/{pdb}.info').readlines()]
+	# identify an possible cofactors
+	for cof in info[-1].split(';'):
+		if cof.split(':')[-1].strip() == pock:
+			cofactor = ': '.join(cof.split(':')[0:2])
+	if not cofactor:
+		cofactor = 'None'
+
+	currentStructure = np.array([pdb,pock,vol,v,bestScore,f'{float(bestScore)/float(vol):.3f}',hitCounter,info[1][:-2],cofactor,info[0][:-2]]).reshape(1,10)
 	if currentScorefile.shape[0] == 0:
 		currentScorefile = currentStructure
 	else:
@@ -528,7 +732,7 @@ def genScorefile(outdir,struc,filt,vol):
 			shape = 2
 		else:
 			shape = currentScorefile.shape[0]+1
-		currentScorefile = np.append(currentScorefile,currentStructure).reshape(shape,7)
+		currentScorefile = np.append(currentScorefile,currentStructure).reshape(shape,10)
 
 	# if there is more than one entry in the scorefile, sort it by int%
 	# take the in% col [:,-2]; ensure it is a float; 
@@ -540,7 +744,7 @@ def genScorefile(outdir,struc,filt,vol):
 	with open(f'{outdir}score.txt','w') as sfile:
 		sfile.write(header)
 		for l in currentScorefile:
-			line = f'{l[0]:<6}{l[1]:<8}{l[2]:^{15}.{8}}{l[3]:{12}.{8}}{l[4]:{10}.{7}}{float(l[5]):.3f}{l[6]:>6}'
+			line = f'{l[0]:<4};{l[1]:>8};{l[2]:>10.8};{l[3]:>10.8};{l[4]:>9.7};{float(l[5]):>{6}.{3}};{l[6]:>5};{l[7]}; {l[8]}; {l[9]}'
 			sfile.write(f'{line}\n')
 
 
