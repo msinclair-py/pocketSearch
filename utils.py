@@ -701,12 +701,12 @@ def genScorefile(outdir,pdbdir,struc,filt,vol):
 			for i, line in enumerate(currentScorefile[:,:2]):
 				if pdb in line:
 					if pock in line:
-						hitCounter += int(currentScorefile[i][-1])
+						hitCounter += int(currentScorefile[i][6])
 						currentScorefile = np.delete(currentScorefile,i,0)
 		else:
 			if pdb in currentScorefile:
 				if pock in currentScorefile:
-					hitCounter += int(currentScorefile[-1])
+					hitCounter += int(currentScorefile[:,6])
 					# if this is the first entry in the scorefile and it is also a duplicate,
 					# the original line must be erased so there aren't duplicate entries.
 					# this will trigger the downstream behavior to treat it as if it is the
@@ -738,7 +738,7 @@ def genScorefile(outdir,pdbdir,struc,filt,vol):
 	# take the in% col [:,-2]; ensure it is a float; 
 	# argsort is ascending [::-1] makes it descending
 	if currentScorefile.shape[0] > 1:
-		currentScorefile = currentScorefile[currentScorefile[:,-2].astype(float).argsort()[::-1]]
+		currentScorefile = currentScorefile[currentScorefile[:,5].astype(float).argsort()[::-1]]
 	
 	# being certain that the relevant info is correct rewrite scorefile
 	with open(f'{outdir}score.txt','w') as sfile:
@@ -778,17 +778,13 @@ def moveScoredStructures(outdir,pdbdir):
 		returns None, moves PDBs to output directory
 	"""
 	
-	scores = np.genfromtxt(f'{outdir}score.txt',skip_header=1,dtype='unicode')
-
-	# list comprehension to get the pdb ID for all xxxx.pdb files
-	pdbs = [pdb.split('/')[-1][:4] for pdb in glob.glob(f'{pdbdir}*.pdb') if len(pdb.split('/')[-1]) == 8]
+	scores = np.genfromtxt(f'{outdir}score.txt',skip_header=1,delimiter=';',
+							autostrip=True,dtype='unicode')
 	
-	if scores.size > 7:
-		notScored = np.setdiff1d(np.array(pdbs),scores[:,0])
+	if scores.size > 10:
+		scored = scores[:,0]
 	else:
-		notScored = np.setdiff1d(np.array(pdbs),scores[0])
-
-	scored = scores[:,0]
+		scored = scores[0]
 	
 	path = f'{outdir}scored_pdbs/'
 
@@ -822,7 +818,7 @@ def rosetta_prep(outdir,indir,filt,hilt,pocket):
 	
 	# get our list of pose files to make from the scorefile
 	lst = np.genfromtxt(f'{outdir}score.txt', dtype='unicode', skip_header=1,
-		usecols=(0,1,5,6))
+						delimiter=';',usecols=(0,1,5,6),autostrip=True)
 	
 	# this if statement ensures that no indexing errors occur if there is only
 	# one good pocket in the group
