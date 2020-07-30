@@ -6,6 +6,3 @@ fpocket = '/home/matt/Software/fpocket/bin/fpocket'
 # full filepath to both SURF and VASP
 vasp = '/home/matt/Software/VASPreleasePack/codeRelease/vaspRelease/debug/vasp'
 surf = '/home/matt/Software/VASPreleasePack/codeRelease/surfProcessingRelease/debug/surfProcessing'
-
-# full filepath to your list of pdbs to query
-pdblist = '../pdb_list.txt'

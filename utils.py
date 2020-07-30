@@ -88,18 +88,12 @@ def getInfo(structure, directory):
 			reader.append(line)
 	
 	# obtain title
-	titleArr = []
 	for line in reader:
-		if 'TITLE' in line:
-			titleArr.append(line)
+		if 'COMPND' in line:
+            if 'MOLECULE' in line:
+                base = line.split(':')[-1]
+                title = base.split(';')[0]
 		
-	for i, entry in enumerate(titleArr):
-		if i > 0:
-			line = ' '.join(entry.split()[2:])
-			title = f'{title} {line}'
-		else:
-			title = ' '.join(entry.split()[1:])
-
 	# obtain experimental info
 	expArr = []
 	for line in reader:
