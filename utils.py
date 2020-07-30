@@ -90,9 +90,9 @@ def getInfo(structure, directory):
 	# obtain title
 	for line in reader:
 		if 'COMPND' in line:
-            if 'MOLECULE' in line:
-                base = line.split(':')[-1]
-                title = base.split(';')[0]
+			if line[8:10] == ' 2':
+				base = line.split(':')[-1]
+				title = base.split(';')[0].strip()
 		
 	# obtain experimental info
 	expArr = []
@@ -105,14 +105,14 @@ def getInfo(structure, directory):
 	if len(expArr) > 1:
 		method = ' '.join(expArr[0].split()[1:])
 		resolution = ' '.join(expArr[1].split()[-2:])
-		exp_info = f'{method}: {resolution}'
+		exp_info = f'{method.strip()}: {resolution.strip()}'
 	else:
 		exp_info = 'NONE'
 
 	# obtain cofactor info
 	coflines = []
 	for line in reader:
-		if 'HETNAM' in line: # need to somehow handle multiline cofactors
+		if 'HETNAM' == line[:6]: 
 			coflines.append(line)
 	
 	# go through extracted lines to get relevant cofactor information
@@ -152,8 +152,8 @@ def getInfo(structure, directory):
 	outfile = f'{directory}infofiles/{structure[:-4]}.info'
 	with open(outfile, 'w') as out:
 		out.write(f'{title}\n')
-		out.write(f'{exp_info}\n')
-		out.write(f'{cofactors}')                                 
+		out.write(f'{exp_info.strip()}\n')
+		out.write(f'{cofactors.strip()}')                                 
 
 
 def clean(structure):
@@ -674,9 +674,9 @@ def genScorefile(outdir,pdbdir,struc,filt,vol):
 		curScore = 0
 
 	print('-----Updating Scorefile-----')
-	header = 'PDB   Pock      Target Vol   Pock Vol    Int Vol   Int %  #hits'
-	addl = 'Exp. Method       Cofactor(s)         Protein Name\n'
-	header = '  '.join([header,addl])
+	header = 'PDB   Pock     Target Vol  Pock Vol   Int Vol  Int%  #hits'
+	addl = 'Exp. Method                       Cofactor(s)                 Protein Name\n'
+	header = '       '.join([header,addl])
 	# read scorefile lines and check if structure has been reported before
 	# if so we will inherit the current number of hits and update our counter
 	if not os.path.exists(f'{outdir}score.txt'):
@@ -738,7 +738,7 @@ def genScorefile(outdir,pdbdir,struc,filt,vol):
 	with open(f'{outdir}score.txt','w') as sfile:
 		sfile.write(header)
 		for l in currentScorefile:
-			line = f'{l[0]:<4};{l[1]:>8};{l[2]:>10.8};{l[3]:>10.8};{l[4]:>9.7};{float(l[5]):>{6}.{3}};{l[6]:>5};{l[7]}; {l[8]}; {l[9]}'
+			line = f'{l[0]:<4};{l[1]:>8};{l[2]:>10.8};{l[3]:>10.8};{l[4]:>9.7};{float(l[5]):>{6}.{3}};{l[6]:>5}; {l[7]}; {l[8]}; {l[9]}'
 			sfile.write(f'{line}\n')
 
 
