@@ -27,3 +27,9 @@ to screen against, this will perform the actual screen. PDBs can either be downl
 in advance or a list of pdbs can be passed via the -m random option (Note: the path to
 the list must be present in the aliases.py code). For a full list of parameters use the
 -h or --help flags.
+
+-------------
+Bug Reporting
+-------------
+If you run into any errors while running the code you can submit a post on the github or
+directly email me at: mts7@illinois.edu
