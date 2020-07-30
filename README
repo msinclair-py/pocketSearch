@@ -12,42 +12,18 @@ mutagenesis, and catalysis analysis.
 -------------
 initialize.py
 -------------
-This script takes 3 mandatory, positional arguments at runtime. These do
-not require any flags. The arguments are: 
-
-1) the pdb (e.g. 1m1n.pdb or just 1m1n, either will work)
-2) the directory containing the fpocket output of the pdb (Note: This
-	isn't the actual fpocket pdb_out/ directory, just the filepath where
-	this output directory can be found)
-3) the number of the pocket from fpocket you are trying
-    to match (e.g. 1)
-
-The additional arguments are all parameters for conformation generation;
-	all angles are in degrees, not radians:
-
-the rotational degrees for precession (-r or --r_angle flag; 30 by default)
-the tilt angle (-t or --t_angle flag; 10 by default)
-the translational shift (-s or --shift flag; 2 by default)
+This is used to setup the structure containing the desired catalytic pocket.
+fpocket must have been run on this already, and the correct pocket identified
+before running as this step cannot be automated, nor should it be. After the
+pocket has been identified this script will generate conformers of the pocket
+in preparation of screening. For a full list of parameters use the -h or --help
+flags.
 
 ---------------
 pocketSearch.py
 ---------------
-This script takes 3 mandatory, positional arguments at runtime. These do 
-not require any flags. The arguments are:
-
-1) the input directory (where the pdbs to be tested from rcsb are located)
-2) the output directory (this is where the VASP outputs and the score file
-    will be located after the run)
-3) the initial directory (where the initial structures you are testing against
-    are located, e.g. for testing rcsb against 1m1n.pdb, this is where the 1m1n
-    conformations are located from the initialize scripts)
-
-The additional arguments include:
-
-mode of pdb download (-m or --mode flag; random or skip download; skip by default)
-min alpha spheres in fpocket (-a or --alpha flag; 80 by default)
-max alpha spheres (-c or --cutoff flag; 150 by default)
-percent filter (-f or --filter flag; .7 by default)
-hit filter (-ht or --hits flag; 1 by default)
-number of random structures to download if -m random (-r or --rand flag; 100 by default)
-minimal screen filter for initial screen (-s or --screen; 0.5 by default)
+This is the screening script. After running initialize.py and obtaining pdbs
+to screen against, this will perform the actual screen. PDBs can either be downloaded
+in advance or a list of pdbs can be passed via the -m random option (Note: the path to
+the list must be present in the aliases.py code). For a full list of parameters use the
+-h or --help flags.
