@@ -156,7 +156,7 @@ def getInfo(structure, directory):
 		out.write(f'{cofactors.strip()}')                                 
 
 
-def clean(structure):
+def clean(structure): 
 	"""
 	PDBs straight from RCSB have a lot of information we don't care about.
 	We need to isolate chain A and also filter out any alternative residues.
@@ -174,7 +174,7 @@ def clean(structure):
 	# filter out all chains but chain A and also remove alternative residues
 	filtered = [line for line in lines if line[21] == 'A' and line[22:26].strip().isdigit()]
 	# only take highest occupancy atoms
-	highest = [f'{line[:16]} {line[17:]}' for line in filtered if line[16] == ' ' or line[16] == 'A']
+	highest = [f'{line[:16]} {line[17:]}' for line in filtered if line[16] in [' ', 'A']]
 
 	# renumber atoms beginning from 1
 	# get all the resids for each line
@@ -185,8 +185,9 @@ def clean(structure):
 	# perform mapping
 	renumbered = [np.where(uniqueValues == x)[0][0] + 1 for x in resid]
 	
-	# put the new numbering back into each line
+	# put the new numbering back into each line, including TER line
 	final = [f'{line[:22]}{renumbered[i]:>4}{line[26:]}' for i, line in enumerate(highest)]
+    final = final + ['TER']
 
 	# move original pdb file
 	(dirname, filename) = os.path.split(structure)
@@ -197,6 +198,8 @@ def clean(structure):
 	with open(structure,'w') as outfile:
 		for line in final:
 			outfile.write(line)
+
+    outfile.close()
 
 
 def writePockets(directory, pock, maximum):
