@@ -899,3 +899,53 @@ def rosetta_prep(outdir,indir,filt,hilt,pocket):
 								outfile.write(f'{line}')
 							else:
 								outfile.write(f'{line} ')
+
+
+def updateCheckpoint(checkpoint_file, checkpoint_value):
+    """
+    Updates the first line of the checkpoint file. The checkpoint structure is
+    (a) Index of which structure we are currently on (still indexes from 0)
+    (b) One structure per line -> when loaded into an array
+    Inputs:
+        checkpoint_file - the full path and filename of the checkpoint
+        checkpoint_value - the index corresponding to the most recently
+                    COMPLETED pocketSearch run
+    Returns:
+        None
+    """
+    
+    backup = f'{checkpoint_file}.BAK'
+    shutil.copy(checkpoint_file, backup)
+    
+    f = open(backup)
+    first_line, remainder = f.readline(), f.read()
+    f.close()
+
+    t = open(checkpoint_file, 'w')
+    t.write(f'{checkpoint_value}\n')
+    t.write(remainder)
+    t.close()
+    
+    os.remove(backup)
+
+
+def restartRun(chkpt):
+    """
+    Read in checkpoint file to restart a run.
+    Inputs:
+        chkpt - checkpoint filepath
+    Returns:
+        list of structures to run on
+    """
+
+    f = open(chkpt)
+    idx, structures = int(f.readline().strip()), [line for line in f.read()]
+    f.close()
+
+    to_be_run = structures[i+1:]
+    os.remove(chkpt)
+    t = open(chkpt, 'w')
+    t.write(to_be_run)
+    t.close()
+
+    return to_be_run
