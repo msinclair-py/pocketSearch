@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-import os, glob, argparse
+import argparse, glob, os
+import ray
 from string import ascii_letters, digits
 from random import choice
 from utils import *
@@ -13,9 +14,6 @@ parser.add_argument('pdbdir', help='Directory of PDBs to be tested against targe
 parser.add_argument('outputdir', help='Output directory')
 parser.add_argument('targetdir', 
                 help='Directory containing target pocket conformations')
-parser.add_argument('-m', '--mode',  dest='mode', nargs='?',
-                choices=['random','skip'], metavar='M', default='skip',
-                help='Mode of action, choices: skip (default), random download')
 parser.add_argument('-a', '--alpha', dest='alpha', default=0.80,
                 metavar='A', help='Percentage cutoff for minimum number of alpha spheres in fpocket, \
                                                 default behavior is 0.80 of target structure')
@@ -26,14 +24,16 @@ parser.add_argument('-f', '--filter', dest='filt', default=0.7,
                 metavar='F', help='Minimum shared %% identity')
 parser.add_argument('-ht','--hits', dest='hilt', default=1,
                 metavar='H', help='Minimum number of %% identity hits')
-parser.add_argument('-r','--rand', dest='rand', default=100,
-                metavar='R', help='Number of random structure to download, if random mode selected')
 parser.add_argument('-s','--screen', dest='screen', default=0.5,
                 metavar='S', help='Short screen filter to determine whether \
                                                 translational sampling occurs')
 parser.add_argument('-cp','--checkpoint', dest='checkpoint', default=False,
                 metavar='P', help='The name of checkpoint file to read in order \
                                                 to restart a run')
+parser.add_argument('-mp', '--multiprocessing', dest='mp', default=1,
+                metavar='M', help='Proportion of cpu threads to use in multiprocessing. If set to 0, \
+                                                multiprocessing is turned off. Defaults to all \
+                                                available threads for use on hpc resources.')
 
 # Now, parse the command line arguments and store the values in the arg variable
 args = parser.parse_args()
@@ -46,9 +46,9 @@ alpha = float(args.alpha)
 cutoff = float(args.cutoff)
 min_intersect = float(args.filt)
 min_hits = int(args.hilt)
-rand = int(args.rand)
 screen = float(args.screen)
 checkpoint = args.checkpoint
+nthreads = args.mp
 
 # make sure directories have correct formatting
 pdbdir = checkFormat(pdbdir)
@@ -61,16 +61,6 @@ if checkpoint:
     chkpt = checkpoint
 
 else:
-    # Different modes of pdb handling
-    if args.mode=='random':
-        randomPDBs(pdbdir,rand,outputdir)
-    elif args.mode=='sublist':
-        print('Which sublist? (1-400)')
-        num=input()
-        sublist(num)
-    elif args.mode!='skip':
-        print("No mode was selected for pdb acquisition, default is to skip downloading pdbs")
-    
     # rename everything to be consistent with typical naming schemes
     formatPDBs(pdbdir)
     
