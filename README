@@ -9,6 +9,20 @@ engineering. The output of this program is a Rosetta pose file for
 computational mutagenesis to further screen candidates for wet lab
 mutagenesis, and catalysis analysis.
 
+# Installation
+To install pocketSearch in it's current form you can just clone this repo.
+This can be accomplished by the following command (on a *nix type filesystem):
+`gh repo clone msinclair-py/pocketSearch`
+
+# Dependencies
+There are a few software dependencies which we have attempted to minimize in
+order to run pocketSearch. Firstly, you will need a local install of fpocket 3.0
+or above which can be accessed at: https://github.com/Discngine/fpocket. The final
+piece of software you will need is SURF/VASP (not to be confused with the popular
+ab initio simulation software VASP), which can be found here: 
+http://www.cse.lehigh.edu/~chen/software.htm. The filepath to both these programs
+on you local system must be updated in the `aliases.py` file.
+
 -------------
 initialize.py
 -------------
