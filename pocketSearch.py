@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 import argparse, os
 import ray
-from functools import partial
 from utils import *
 
 # Define the parser
@@ -32,7 +31,7 @@ parser.add_argument('-s','--screen', dest='screen', default=0.5,
 parser.add_argument('-cp','--checkpoint', dest='checkpoint', default=False,
                 metavar='P', help='The name of checkpoint file to read in order \
                                     to restart a run')
-parser.add_argument('-mp', '--multiprocessing', dest='mp', default=0,
+parser.add_argument('-mp', '--multiprocessing', dest='mp', default=1,
                 metavar='M', help='Proportion of cpu threads to use in \
                                     multiprocessing. If set to 0, multi\
                                     processing is turned off. Defaults to all \
@@ -88,7 +87,10 @@ if multiprocessing:
 else:
     # run in serial on one thread
     for i, structure in enumerate(tracker):
-        pocket_search(i, structure) 
+        pocket_search(i, structure, outputdir, pdbdir, targetdir, t, s, 
+                        short_sample, min_intersect, vol, screen, min_hits) 
+
+postprocessing(outputdir)
 
 if os.path.exists('checkpoint.chk'):
     os.remove('checkpoint.chk')

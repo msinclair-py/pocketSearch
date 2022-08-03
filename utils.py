@@ -931,8 +931,8 @@ def preprocess(checkpoint: bool, pdbdir: str, targetdir: str,alpha: float,
             coordsystem.get_coords()
             coordsystem.center()
             coordsystem.principal()
-            coordsystem.align()
-            coordsystem.make_pdb()
+            aligned = coordsystem.align()
+            coordsystem.make_pdb(aligned)
         
         # generate surf files and run VASP on pockets
         # check to see if VASP scores and VASP pockets directory exists
@@ -1030,3 +1030,32 @@ def pocket_search(i: int, structure: str, outputdir: str, pdbdir: str,
     
     # update checkpoint file
     update_checkpoint(outputdir, structure)
+
+
+def postprocessing(outdir: str) -> None:
+    """
+    Cleans up scorefile so that it is easier to read.
+    Inputs:
+        outdir - output directory where scorefile is located
+    Outputs:
+        None
+    """
+    score = f'{outdir}score.txt'
+    sfile = open(f'{outdir}score.txt', 'r')
+    header = sfile.readline()
+    contents = [line.split(';') for line in sfile.readlines()]
+    sfile.close()
+
+    shutil.move(score, f'{outdir}score.BAK')
+
+    with open(score, 'w') as outfile:
+        outfile.write(header)
+        for line in contents:
+            pdb, pock, tv, pv, iv, ip, nh, method, cof, name = line
+            oline = f'{pdb:<6}{pock:<9}{tv:<11.8}{pv:<11.8}{iv:<9.7}{ip:<7.5}'
+            oline += f'{nh:>6.4}  {method:<38}{cof}  {name:>17}'
+
+            outfile.write(oline)
+
+    outfile.close()
+    os.remove(f'{outdir}score.BAK')

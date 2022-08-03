@@ -11,11 +11,11 @@ ${GIVEN_NODE}
 #SBATCH --exclusive
 ### Give all resources to a single Ray task, ray can manage the resources internally
 #SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-task=${NUM_GPUS_PER_NODE}
+##SBATCH --gpus-per-task=${NUM_GPUS_PER_NODE}
+#SBATCH -t 2:00:00
 
 # Load modules or your own conda environment here
 # module load pytorch/v1.4.0-gpu
-# conda activate ${CONDA_ENV}
 ${LOAD_ENV}
 
 # ===== DO NOT CHANGE THINGS HERE UNLESS YOU KNOW WHAT YOU ARE DOING =====

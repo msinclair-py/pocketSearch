@@ -65,7 +65,7 @@ class Coordinates:
     
     #obtain rotation matrix using proof, then apply to coordinate system
     #"a" corresponds to a unit vector along the longest principal axis
-    def align(self) -> None:
+    def align(self) -> List[List[float]]:
         array = self.coords
         a = self.principal
         aligned=np.zeros((array.shape[0],array.shape[1]))
@@ -79,7 +79,8 @@ class Coordinates:
         rotmatrix = I + vx + (vx @ vx)/(1+c)
         aligned = rotmatrix @ array.T
         self.coords = aligned.T
-    
+        return self.coords
+  
     
     #create pdb, keeping relevant conformational state data
     def make_pdb(self, array, a = None, b = None, c = None, d = None, e = None) -> None:
