@@ -330,7 +330,7 @@ def align (array: List[float], a: List[float]) -> List[float]:
         return aligned.T        
 
 
-def center (array: List[float]) -> List[float]:
+def center(array: List[float]) -> List[float]:
         """
         Moves a point cloud so the geometric center is at the
         origin (0,0,0). Accomplished by subtracting each point
@@ -344,7 +344,7 @@ def center (array: List[float]) -> List[float]:
         centered=np.zeros((array.shape[0],array.shape[1]))
         com=array.mean(0)
         for i in range(array.shape[0]):
-                centered[i] = array[i] - com
+            centered[i] = array[i] - com
         return centered
 
 
@@ -362,11 +362,12 @@ def find_pockets(indir: str, alphas: int) -> None:
         """
 
         for i in glob.glob(f'{indir}*.pdb'):
-                root = os.path.basename(i).split('.')[0]
-                if not os.path.exists(f'{indir}{root}_out/'):
-                        args=(fpocket,'-f',i,'-i',alphas)
-                        str_args=[ str(x) for x in args ]
-                        subprocess.run(str_args)
+            root = os.path.basename(i).split('.')[0]
+            if not os.path.exists(f'{indir}{root}_out/'):
+                print(f'---RUNNING fpocket ON {root}---')
+                args=(fpocket,'-f',i,'-i',alphas)
+                str_args=[ str(x) for x in args ]
+                subprocess.run(str_args)
         
 
 def gen_surfs(outdir: str, indir: str, pocket: str) -> None:
