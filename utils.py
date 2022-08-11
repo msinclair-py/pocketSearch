@@ -42,89 +42,74 @@ def format_pdbs(directory: str) -> None:
 
 
 def get_info(structure: str, directory: str) -> None:
-   """
-   Obtain relevant information for each structure (protein name,
-   experimental method, resolution, any cofactors).
-   Inputs:
-       structure - protein to extract info of
-       directory - pdb directory where structure can be found
-   Outputs:
-       returns None, writes info to file in pdb directory
-   """
-        
-   # read file
-   reader = []
-   with open(f'{directory}{structure}','r') as f:
-       for line in f:
-           reader.append(line)
-   
-   # obtain title
-   for line in reader:
-       if 'COMPND' in line:
-           if line[8:10] == ' 2':
-               base = line.split(':')[-1]
-               title = base.split(';')[0].strip()
-   
-   # obtain experimental info
-   expArr = []
-   for line in reader:
-       if 'EXPDTA' in line:
-           expArr.append(line)
-       if 'RESOLUTION.' in line:
-           expArr.append(line)
+    """
+    Obtain relevant information for each structure (protein name,
+    experimental method, resolution, any cofactors).
+    Inputs:
+        structure - protein to extract info of
+        directory - pdb directory where structure can be found
+    Outputs:
+        returns None, writes info to file in pdb directory
+    """
+         
+    # read file
+    reader = [line for line in open(f'{directory}{structure}').readlines()]
+    print(structure)
+    
+    # obtain title
+    for line in reader:
+        if 'COMPND' in line:
+            if line[8:10] == ' 2':
+                base = line.split(':')[-1]
+                title = base.split(';')[0].strip()
+    
+    # obtain experimental info
+    expArr = []
+    for line in reader:
+        if 'EXPDTA' in line:
+            expArr.append(line.replace(';',','))
+        if 'RESOLUTION.' in line:
+            expArr.append(line)
 
-   if len(expArr) > 1:
-       method = ' '.join(expArr[0].split()[1:])
-       resolution = ' '.join(expArr[1].split()[-2:])
-       exp_info = f'{method.strip()}: {resolution.strip()}'
-   else:
-       exp_info = 'NONE'
+    if len(expArr) > 1:
+        method = ' '.join(expArr[0].split()[1:])
+        resolution = ' '.join(expArr[1].split()[-2:])
+        exp_info = f'{method.strip()}: {resolution.strip()}'
+    else:
+        exp_info = 'NONE'
 
-   # obtain cofactor info
-   coflines = []
-   for line in reader:
-       if 'HETNAM' == line[:6]: 
-           coflines.append(line)
-   
-   # go through extracted lines to get relevant cofactor information
-   if coflines:
-       multiples = 0
-       cofs = []
-   
-       for i in range(len(coflines)):
-           # identify the current cofactor
-           current = coflines[i].split()[1]
-       
-           # if there are multiple lines the the 3-letter code will instead
-           # be the line number of the current cofactor
-           if len(current) < 2:
-               multiples += 1
-               # get entry index of current cofactor in the cofs array
-               Idx = i - multiples
-           
-               # append cofactor name to existing entry
-               joined = f'{cofs[Idx].split(":")[1].strip()}{"".join(coflines[i].split()[3:])}'
-               cofs[Idx] = ': '.join([cofs[Idx].split(':')[0].strip(),joined,'Not present'])
+    # obtain cofactor info
+    coflines = []
+    for line in reader:
+        if 'HETNAM' == line[:6]: 
+            coflines.append(line.split()[1:])
 
-           # first line of cofactor, just append to cofs
-           else:
-               cofactor = ' '.join(coflines[i].split()[2:])
-               cofs.append(': '.join([current,cofactor,'Not present']))
-   
-       cofactors = '; '.join(cofs)
-   
-   else:
-       cofactors = 'NONE'
+    if coflines:
+        cofs = []
+        idx = 0
+        cofs.append([coflines[0][0], ' '.join(coflines[0][1:])])
 
-   # write out all info to file
-   if not os.path.exists(f'{directory}infofiles/'):
-       os.mkdir(f'{directory}infofiles/')
+        for cofline in coflines[1:]:
+            if cofline[1] == cofs[idx][0]:
+                cofs[idx][1] = cofs[idx][1] + ''.join(cofline[2:])
+            else:
+                cofs.append([cofline[0], ' '.join(cofline[1:])])
+                idx += 1
 
-   outfile = f'{directory}infofiles/{structure[:-4]}.info'
-   with open(outfile, 'w') as out:
-       out.write(f'{title}\n')
-       out.write(f'{exp_info.strip()}\n')
-       out.write(f'{cofactors.strip()}')                                 
+        cofactors = ';'.join([': '.join(cof) for cof in cofs])
+    
+    else:
+        cofactors = 'NONE'
+
+    # write out all info to file
+    if not os.path.exists(f'{directory}infofiles/'):
+        os.mkdir(f'{directory}infofiles/')
+
+    outfile = f'{directory}infofiles/{structure[:-4]}.info'
+    with open(outfile, 'w') as out:
+        out.write(f'{title}\n')
+        out.write(f'{exp_info.strip()}\n')
+        out.write(f'{cofactors.strip()}')                                 
 
 
 def clean(structure: str) -> None: 
@@ -224,6 +209,7 @@ def identify_cofactors(directory: str) -> None:
                 base = os.path.basename(pocket)
                 pnum = base.split('.')[1]
 
+                print(base)
                 # location and name of corresponding infofile
                 infodir = f'{directory}infofiles/'
                 infofile = f'{infodir}{base[:4]}.info'
@@ -645,6 +631,7 @@ def append_scorefile(outdir: str, pdbdir: str, struc: str,
 
         # get exp. method, cofactor and protein name information
         info = [line for line in open(f'{pdbdir}infofiles/{pdb}.info').readlines()]
+        
         cofactor = None
         for cof in info[-1].split(';'):
             if cof.split(':')[-1].strip() == pock:
@@ -710,111 +697,112 @@ def move_scored_structures(outdir: str, pdbdir: str) -> None:
 
 def rosetta_prep(outdir: str, indir: str, filt: float, 
                    hilt: int, pocket: str) -> None:
-        """
-        This function generates rosetta .pos files for each structure that
-        passes both the int% and hit filters. The scorefile is read and for each
-        success the fpocket output for that pocket is read and the resID
-        is acquired for each residue that lines the pocket.
-        Inputs:
-                outdir - output directory where scorefile various outputs are
-                indir - the pdb directory, also containing fpocket outputs
-                filt - int% filter
-                hilt - hit filter
-                pocket - pdb ID and pocket number of each structure
-        """
+    """
+    This function generates rosetta .pos files for each structure that
+    passes both the int% and hit filters. The scorefile is read and for each
+    success the fpocket output for that pocket is read and the resID
+    is acquired for each residue that lines the pocket.
+    Inputs:
+            outdir - output directory where scorefile various outputs are
+            indir - the pdb directory, also containing fpocket outputs
+            filt - int% filter
+            hilt - hit filter
+            pocket - pdb ID and pocket number of each structure
+    """
 
-        # check if the rosetta output directoyr exists, else make it
-        if not os.path.exists(f'{outdir}rosetta'):
-                os.mkdir(f'{outdir}rosetta')
-        
-        # get our list of pose files to make from the scorefile
-        s = open(f'{outdir}score.txt', 'r')
-        _ = s.readline()
-        lst = np.array([[ele.strip() for ele in line.split(';')] for line in s.readlines()])
-        s.close()
-        
-        # this if statement ensures that no indexing errors occur if there is only
-        # one good pocket in the group
-        if lst.ndim == 1:
-                array=[]
-                pose_array=[]
-                if float(lst[2]) > float(filt):
-                        if float(lst[3]) > float(hilt):
-                                a = lst[0]
-                                b = [ int(x) for x in lst[1] if x.isdigit() ]
-                                c=''
-                                for j in range(len(b)):
-                                        c+=f'{b[j]}'
-                                fil = f'{indir}{a}_out/pockets/pocket{c}_atm.pdb'
+    # check if the rosetta output directoyr exists, else make it
+    if not os.path.exists(f'{outdir}rosetta'):
+            os.mkdir(f'{outdir}rosetta')
+    
+    # get our list of pose files to make from the scorefile
+    s = open(f'{outdir}score.txt', 'r')
+    _ = s.readline()
+    raw = [[ele.strip() for ele in line.split(';')] for line in s.readlines()]
+    s.close()
 
-                                # need to check if fpocket messed up any pocket pdbs
-                                # we don't use any fancy text reading methods as some
-                                # of the fpocket errors will be difficult to parse without
-                                # going line by line as below
-                                lines = []
-                                with open(fil,'r') as prefile:
-                                        for line in prefile:
-                                                if line[:4] == 'ATOM':
-                                                        lines.append(line.split()[:6])
-                                
-                                lines = np.asarray(lines)
-                                pose_array = [resid for resid in lines[:,-1]]
-                                
-                                # a period indicates that something went awry with the pdb
-                                # generation during fpocket, we can just ignore these
-                                # residues
-                                for i in range(len(pose_array)):
-                                        if pose_array[i] not in array:
-                                                if "." in pose_array[i]:
-                                                        continue
-                                                else:
-                                                        array.append(pose_array[i])
+    lst = np.array(raw, dtype=str)
 
-                                array = [ int(x) if x[-1].isdigit() else int(x[:-1]) for x in array ]
-                                with open(f'{outdir}rosetta/{a}_pock{c}.pos','w') as outfile:
-                                        for line in sorted(array):
-                                                if line == sorted(array)[-1]:
-                                                        outfile.write(f'{line}')
-                                                else:
-                                                        outfile.write(f'{line} ')
+    if not isinstance(raw[0], list):
+        lst = lst.reshape((1,10))
+    
+    # this if statement ensures that no indexing errors occur if there is only
+    # one good pocket in the group
+    #if lst.ndim == 1:
+    #        array=[]
+    #        pose_array=[]
+    #        if float(lst[2]) > float(filt):
+    #                if float(lst[3]) > float(hilt):
+    #                        a = lst[0]
+    #                        b = [ int(x) for x in lst[1] if x.isdigit() ]
+    #                        c=''
+    #                        for j in range(len(b)):
+    #                                c+=f'{b[j]}'
+    #                        fil = f'{indir}{a}_out/pockets/pocket{c}_atm.pdb'
 
-        else:
-                for i in range(len(lst)):
-                        array=[]
-                        pose_array=[]
+    #                        # need to check if fpocket messed up any pocket pdbs
+    #                        # we don't use any fancy text reading methods as some
+    #                        # of the fpocket errors will be difficult to parse without
+    #                        # going line by line as below
+    #                        lines = []
+    #                        with open(fil,'r') as prefile:
+    #                                for line in prefile:
+    #                                        if line[:4] == 'ATOM':
+    #                                                lines.append(line.split()[:6])
+    #                        
+    #                        lines = np.asarray(lines)
+    #                        pose_array = [resid for resid in lines[:,-1]]
+    #                        
+    #                        # a period indicates that something went awry with the pdb
+    #                        # generation during fpocket, we can just ignore these
+    #                        # residues
+    #                        for i in range(len(pose_array)):
+    #                                if pose_array[i] not in array:
+    #                                        if "." in pose_array[i]:
+    #                                                continue
+    #                                        else:
+    #                                                array.append(pose_array[i])
 
-                        if float(lst[i][2]) > float(filt):
-                                if float(lst[i][3]) > float(hilt):
-                                        a = lst[i][0]
-                                        b = [ int(x) for x in lst[i][1] if x.isdigit() ]
-                                        c = ''
-                                        for j in range(len(b)):
-                                                c+=f'{b[j]}'
-                                        fil = f'{indir}{a}_out/pockets/pocket{c}_atm.pdb'
-                                        
-                                        lines = []
-                                        with open(fil, 'r') as prefile:
-                                                for i,line in enumerate(prefile):
-                                                        if line[:4] == 'ATOM':
-                                                                lines.append(line.split()[:6])
+    #                        array = [ int(x) if x[-1].isdigit() else int(x[:-1]) for x in array ]
+    #                        with open(f'{outdir}rosetta/{a}_pock{c}.pos','w') as outfile:
+    #                                for line in sorted(array):
+    #                                        if line == sorted(array)[-1]:
+    #                                                outfile.write(f'{line}')
+    #                                        else:
+    #                                                outfile.write(f'{line} ')
 
-                                        lines = np.asarray(lines)
-                                        pose_array = [resid for resid in lines[:,-1]]
+    #else:
+    for i in range(len(lst)):
+        array=[]
+        pose_array=[]
 
-                                        for i in range(len(pose_array)):
-                                                if pose_array[i] not in array:
-                                                        if "." in pose_array[i]:
-                                                                continue
-                                                        else:
-                                                                array.append(pose_array[i])
+        if all([float(lst[i][5]) > filt, int(lst[i][6]) > hilt]):
+            a = lst[i][0]
+            b = ''.join([ x for x in lst[i][1] if x.isdigit() ])
+            fil = f'{indir}{a}_out/pockets/pocket{b}_atm.pdb'
+            
+            lines = []
+            with open(fil, 'r') as prefile:
+                for i, line in enumerate(prefile):
+                    if line[:4] == 'ATOM':
+                        lines.append(line.split()[:6])
 
-                                        array = [ int(x) if x[-1].isdigit() else int(x[:-1]) for x in array ]
-                                        with open(f'{outdir}rosetta/{a}_pock{c}.pos','w') as outfile:
-                                                for line in sorted(array):
-                                                        if line == sorted(array)[-1]:
-                                                                outfile.write(f'{line}')
-                                                        else:
-                                                                outfile.write(f'{line} ')
+            lines = np.asarray(lines)
+            pose_array = [resid for resid in lines[:,-1]]
+
+            for i in range(len(pose_array)):
+                if pose_array[i] not in array:
+                    if "." in pose_array[i]:
+                        continue
+                    else:
+                        array.append(pose_array[i])
+
+            array = [ int(x) if x[-1].isdigit() else int(x[:-1]) for x in array ]
+            with open(f'{outdir}rosetta/{a}_pock{b}.pos','w') as outfile:
+                for line in sorted(array):
+                    if line == sorted(array)[-1]:
+                        outfile.write(f'{line}')
+                    else:
+                        outfile.write(f'{line} ')
 
 
 def restart_run(outputdir: str, pdbdir: str) -> List[str]:
@@ -886,12 +874,15 @@ def preprocess(checkpoint: bool, pdbdir: str, targetdir: str,alpha: float,
             os.mkdir(f'{pdbdir}/original_pdbs/')
             
         for unclean in glob.glob(f'{pdbdir}*.pdb'):
-            if not 'pocket' in unclean:
-                protein = os.path.basename(unclean)
-                if not os.path.exists(f'{pdbdir}original_pdbs/{protein}'):
-                    get_info(protein, pdbdir)
-                    clean(unclean)
-        
+            # MAYBE DEPECRATE THE BELOW NOW THAT THERE IS CHECKPOINTING
+            #if not 'pocket' in unclean:
+                #protein = os.path.basename(unclean)
+                #if not os.path.exists(f'{pdbdir}original_pdbs/{protein}'):
+                #    get_info(protein, pdbdir)
+                #    clean(unclean)
+            get_info(os.path.basename(unclean), pdbdir) 
+            clean(unclean)
+
         # get target pocket alpha sphere count for fpocket cutoff calculation
         for target in glob.glob(f'{targetdir}*pocket*'):
             with open(target) as f:
@@ -909,6 +900,7 @@ def preprocess(checkpoint: bool, pdbdir: str, targetdir: str,alpha: float,
     
         print('Writing out pockets...') 
         for entry in name_array:
+            print(f'Extracting pockets from {entry}')
             write_pockets(pdbdir, entry, fpocket_max)
         
         # identify cofactors that match each pocket that passes filter
@@ -1027,7 +1019,7 @@ def pocket_search(i: int, structure: str, outputdir: str, pdbdir: str,
     delete_surfs(structure, outputdir)
 
     # move scored structures
-    move_scored_structures(outputdir, pdbdir)
+    #move_scored_structures(outputdir, pdbdir)
     
     # update checkpoint file
     update_checkpoint(outputdir, structure)
