@@ -3,8 +3,10 @@ import glob, os, shutil, subprocess
 import numpy as np
 from scipy.spatial.distance import cdist
 from typing import List, Tuple
-from aliases import fpocket, surf, vasp
+from aliases import fpocket
 from coordinate_manipulation import Coordinates
+import ripser
+import persim
 
 def check_format(directory: str) -> str:
         """
@@ -273,66 +275,6 @@ def identify_cofactors(directory: str) -> None:
                                 out.write(f'{new_cofline}')
 
 
-def principal (array: List[float]) -> List[float]:
-        """
-        Find the principal axis in a point cloud.
-        Inputs:
-                array - points to find principal axis of
-        Outputs:
-                axis1 - the principal axis of the points        
-        """
-
-        inertia = array.T @ array
-        e_values, e_vectors = np.linalg.eig(inertia)
-        order = np.argsort(e_values)
-        eval3,eval2,eval1 = e_values[order]
-        axis3,axis2,axis1 = e_vectors[:,order].T
-        return axis1
-
-
-def align(array: List[float], a: List[float]) -> List[float]:
-        """
-        Align a point cloud with its principal axis along
-        the z-axis. This is done according to the formula:
-        R = I + vx + vx^2/(1+c) where I is the identity 3x3,
-        vx is a skew-symmetric of a1 x a2, and c is the dot 
-        product a1*a2.
-        Inputs:
-                array - point cloud to align
-                a - vector corresponding to principal axis
-        Outputs:
-                aligned - point cloud that has been aligned
-        """
-
-        aligned=np.zeros((array.shape[0],array.shape[1])) 
-        b = [0,0,1] 
-        v = np.cross(a,b) 
-        c = np.dot(a,b) 
-        I = np.eye(3,3)
-        vx = np.array([[0,-v[2],v[1]],[v[2],0,-v[0]],[-v[1],v[0],0]])
-        R = I + vx + (vx @ vx)/(1+c)
-        aligned = R @ array.T
-        return aligned.T        
-
-
-def center(array: List[float]) -> List[float]:
-        """
-        Moves a point cloud so the geometric center is at the
-        origin (0,0,0). Accomplished by subtracting each point
-        by the geometric center of mass of the point cloud.
-        Inputs:
-                array - points to recenter
-        Outputs:
-                centered - array of recentered points
-        """
-
-        centered=np.zeros((array.shape[0],array.shape[1]))
-        com=array.mean(0)
-        for i in range(array.shape[0]):
-            centered[i] = array[i] - com
-        return centered
-
-
 def find_pockets(indir: str, alphas: int) -> None:
         """
         Run fpocket for all pdbs in a given directory.
@@ -355,213 +297,7 @@ def find_pockets(indir: str, alphas: int) -> None:
                 subprocess.run(str_args)
         
 
-def gen_surfs(outdir: str, indir: str, pocket: str) -> None:
-        """
-        Run SURF to generate surf file of given pocket.
-        Inputs:
-                outdir - directory to output surf file to
-                indir - filepath to pocket
-                pocket - pdb ID and pocket number
-        Outputs:
-                returns None, runs SURF and outputs logfile
-        """
-
-        pock = f'{indir}aligned.{pocket}'
-        print(pocket)
-        n = pocket.split('.')[0]
-        p = pocket.split('.')[1]
-        arg = (surf,'-surfProbeGen',pock,f'{outdir}VASP/pockets/{n}_{p}.SURF',3,.5)
-        str_arg = [ str(x) for x in arg ]
-        out = open(f'{outdir}VASP/pockets/surf.log','w')
-        subprocess.run(str_arg, stdout=out)
-
-
-def intersect(outdir: str, initial: str, pocket: str, snum: int, 
-               total: int, samples: int, catalogue: List[str], full: bool = True) -> None:
-        """
-        Run intersect VASP on given pocket.
-
-        Inputs:
-                outdir - output directory for VASP runs
-                initial - directory containing target structures
-                                that will be intersected with given pocket
-                pocket - pocket structure to be tested against target
-                snum - structure number, for progress display
-                total - total number of structures, for progress display
-                samples - number of conformations being sampled for display
-                catalogue - list of target structures to intersect
-                full - switch for the inclusion of translational sampling
-        
-        Outputs:
-                None, runs VASP for user-specified catalogue
-        """
-        count = 0
-        struc = f'{outdir}VASP/pockets/{pocket.split(".")[0]}_{pocket.split(".")[1]}.SURF'
-        n = f"{pocket.split('.')[0]}_{pocket.split('.')[1]}"
-
-        # clean up outputs so that you can perform operations in
-        # the VASP directory, otherwise too many files
-        if not os.path.exists(f'{outdir}VASP/{n}/'):
-                os.mkdir(f'{outdir}VASP/{n}/')
-
-        for init in catalogue:
-                count += 1
-                if full:
-                        modulo = 25
-                else:
-                        modulo = 5
-                if (count%500==0):
-                        print(f'-----{snum+1}/{total} pockets to be sampled-----')
-                if (count%modulo==0):
-                        print(f'{pocket}: {count}/{samples} conformations')
-
-                fname = os.path.basename(init).split('.')
-                conf = fname[1]
-                rot = fname[2]
-                tilt = fname[3]
-                trans = fname[4]
-                flip = fname[5]
-                arg = (vasp,'-csg',struc,init,'I',f'{outdir}VASP/{n}/intersect.{n}.{conf}.{rot}.{tilt}.{trans}.{flip}.SURF',.5)
-                str_arg = [ str(x) for x in arg ]
-                out = open(f'{outdir}intersect.log','w')
-                subprocess.run(str_arg, stdout=out)
-
-        arg2 = (surf,'-surveyVolume',struc)
-        str_arg2 = [ str(x) for x in arg2 ]
-        out = open(f'{outdir}VASP/pockets/{n}.vol.txt','w')
-        subprocess.run(str_arg2, stdout=out)
-
-
-def gen_short_sample(targetDir: str) -> List[str]:
-        """
-        Generate the short sampling array.
-        Inputs:
-                targetDir - directory containing target structures
-        Outputs:
-                short - array of target structures that comprise the
-                                short screen
-        """
-
-        short = glob.glob(f'{targetDir}*conf0.*.*.0.0.SURF')
-        translations = glob.glob(f'{targetDir}*conf0.0.0.*.0.SURF')
-        short = np.append(short,translations)
-        short = np.unique(short)
-        return short
-
-
-def gen_long_sample(initialdir: str, short: List[str], 
-                     _result: bool, _tSamp: List[bool]) -> List[str]:
-        """
-        Generate the long sampling array. This is done by subtracting out
-        the short array from the totality of structures. Also, the translational
-        screen is applied to exclude any translations where necessary.
-        Inputs:
-                initialdir - directory containing target structures
-                short - array of short screen structures
-                _result - continue non-translated screening
-                _tSamp - boolean array of translational sampling results
-        Outpus:
-                full - array of structures that comprise the full-length screen
-        """
-        
-        if _result:
-                # remove the short sample from the full list
-                full = glob.glob(f'{initialdir}*.SURF')
-                full = np.setdiff1d(full,short)
-
-                # remove appropriate translations from the full list
-                for i,trans in enumerate(_tSamp):
-                        if not trans:
-                                translation = glob.glob(f'{initialdir}*conf*.*.*.{i+1}.*.SURF')
-                                full = np.setdiff1d(full,translation)
-
-        else: # this means the non-translated screen failed
-                full = np.array([])
-                for i,trans in enumerate(_tSamp):
-                        if trans:
-                                translation = glob.glob(f'{initialdir}*conf*.*.*.{i+1}.*.SURF')
-                                full = np.append(full,translation)
-
-        return full
-
-
-def extract_score(outdir: str, pocket: str) -> None:
-        """
-        Runs SURF to get the intersect score for all intersections performed
-        on supplied pocket.
-        Inputs:
-                outdir - output directory where the scores will be put
-                pocket - the pocket to obtain scores for
-        Outputs
-                returns None, runs SURF -surveyVolume to generate scores
-        """
-        
-        n, pock = pocket.split('.')[0], pocket.split('.')[1]
-        for inter in glob.iglob(f"{outdir}VASP/{n}_{pock}/*.SURF"):
-                p = os.path.basename(inter).split('.')
-                na = p[1]
-                co = p[2]
-                ro = p[3]
-                ti = p[4]
-                tr = p[5]
-                fl = p[6]
-                arg = (surf,'-surveyVolume',inter)
-                out = open(f'{outdir}VASP/{n}_{pock}/{na}_{co}_{ro}_{ti}_{tr}_{fl}_iscore.txt','w')
-                str_arg = [ str(x) for x in arg ]
-                subprocess.run(str_arg, stdout=out)
-
-
-def screen_check(outdir: str, pocket: str, cut: float, _tSamp: List[bool]) -> Tuple[bool, List[bool]]:
-        """
-        Check if a short screen was successful. Additionally, map out
-        which translations to perform in full sampling.
-        Inputs:
-                outdir - output directory filepath for VASP scores
-                pocket - which pocket to check screen on
-                cut - volume cutoff for screening
-                _tSamp = copy of tSamp boolean array, dictates trans sampling
-        Outputs:
-                result - whether short screen was successful or not
-                _tSamp = updated copy of tSamp
-        """
-        result = False
-        n = pocket.split('.')[0]
-        p = pocket.split('.')[1]
-
-        # check small screen first
-        sText = f'{outdir}VASP/{n}_{p}/{n}_{p}_conf0*_0_0_iscore.txt'
-        values = np.array([float([lines.split() for lines in open(struc,'r')][-1][-1])
-                                                for struc in glob.glob(sText)])
-        if np.where(values > cut)[0].size > 0:
-                result = True
-
-        for i in range(len(_tSamp)):
-                tInt = [line.split() for line in \
-                                open(f'{outdir}VASP/{n}_{p}/{n}_{p}_conf0_0_0_{i+1}_0_iscore.txt').readlines()][-1][-1]
-                if float(tInt) < cut:
-                        _tSamp[i] = False
-
-        return result, _tSamp
-
-
-def original_volume(outdir: str, p: str) -> None:
-        """
-        Runs SURF -surveyVolume on supplied pocket.
-        Inputs:
-                outdir - directory where to output volume
-                p - pocket to get original volume of
-        Outputs:
-                returns None, generates volume file for pocket
-        """
-
-        v = f"{outdir}VASP/pockets/{p.split('.')[0]}_{p.split('.')[1]}.SURF"
-        n = os.path.basename(v).split('.')[0]
-        arg = (surf,'-surveyVolume',v)
-        out = open(f'{outdir}VASP/pockets/{n}.vol.txt','w')
-        str_arg = [ str(x) for x in arg ]
-        subprocess.run(str_arg, stdout=out)
-
-
+#FIXME
 def gen_scorefile(outdir: str) -> bool:
     """
     Generates new scorefile or returns False if one exists. If a scorefile exists the main
@@ -586,6 +322,7 @@ def gen_scorefile(outdir: str) -> bool:
         return True
      
 
+#FIXME
 def append_scorefile(outdir: str, pdbdir: str, struc: str, 
                    filt: float, vol: float) -> None:
         """
@@ -644,24 +381,6 @@ def append_scorefile(outdir: str, pdbdir: str, struc: str,
             sfile.write(';'.join(l) + '\n')
 
 
-def delete_surfs(structure: str, outdir: str) -> None:
-        """
-        In an effort to keep the data footprint small, delete surf files. this
-        should only be called after scorefile has been written out.
-        Inputs:
-                structure - name of structure to delete files for
-                outdir - directory in filepath of surf files
-        Outputs:
-                returns None, deletes appropriate files
-        """
-        
-        print(f'-----Cleaning up {structure} SURF/VASP files-----')
-        n, p = structure.split('.')[0], structure.split('.')[1]
-        shutil.rmtree(f'{outdir}VASP/{n}_{p}')
-        os.remove(f'{outdir}VASP/pockets/{n}_{p}.SURF')
-        os.remove(f'{outdir}VASP/pockets/{n}_{p}.vol.txt')
-
-
 def move_scored_structures(outdir: str, pdbdir: str) -> None:
     """
     Function to move cleaned PDBs of structures that make it to the
@@ -694,6 +413,7 @@ def move_scored_structures(outdir: str, pdbdir: str) -> None:
                 shutil.move(f'{pdbdir}{pdb}.pdb', path)
 
 
+#FIXME
 def rosetta_prep(outdir: str, indir: str, filt: float, 
                    hilt: int, pocket: str) -> None:
     """
@@ -790,26 +510,24 @@ def update_checkpoint(outputdir: str, completed_structure: str) -> None:
     f.close()
 
 
-def preprocess(checkpoint: bool, pdbdir: str, targetdir: str,alpha: float, 
-                cutoff: float, outputdir: str) -> Tuple[List[str], int, int, 
-                                                        List[str], float]:
+#FIXME
+def preprocess(checkpoint: bool, pdbdir: str, targetdir: str, alpha: float, 
+                cutoff: float, outputdir: str) -> List[str]:
     """
     Preprocessing workflow. Setups up checkpointing and obtains list of
     structures to run pocketSearch on.
     Inputs:
-        checkpoint -
-        pdbdir -
-        targetdir -
-        alpha -
-        cutoff -
-        outputdir -
+        checkpoint - Boolean value which indicates whether or not to look
+                        for a checkpoint file to restart a run
+        pdbdir - Path to where the pdb scaffolds are kept
+        targetdir - Path to where the target pocket is located
+        alpha - Min. percent of target pocket alpha spheres to be considered
+                    for screening
+        cutoff - Max. percent of target pocket alpha spheres to be considered
+                    for screening
+        outputdir - Path to where the outputs of screening will be stored
     Outputs:
-        tracker -
-        t -
-        s -
-        short_sample -
-        vol -
-        chkpt -
+        tracker - List of all pdbs that still need to be ran
     """
 
     # read in checkpoint; else do pocketSearch prepwork
@@ -851,108 +569,69 @@ def preprocess(checkpoint: bool, pdbdir: str, targetdir: str,alpha: float,
         # identify cofactors that match each pocket that passes filter
         identify_cofactors(pdbdir)
     
-        print('Processing pockets...')
-        # center and align pockets
-        prealigned = []
-        for name in glob.glob(f'{pdbdir}*.pocket*.pdb'):
-            # check if original pdb still there, if not it has been scored already
-            # and this structure should be skipped
-            stem = os.path.basename(name).split('.')
-            if os.path.exists(f'{pdbdir}{stem[0]}.pdb'):
-                prealigned.append([stem[0],stem[1]])
-    
-        tracker = []
-        for entry in prealigned:
-            print(entry)
-            tracker.append(f'{entry[0]}.{entry[1]}')
-            coordsystem = Coordinates(pdbdir, entry[0], pnum=entry[1])
-            coordsystem.get_coords()
-            coordsystem.center()
-            coordsystem.principal()
-            aligned = coordsystem.align()
-            coordsystem.make_pdb(aligned)
-        
-        # generate surf files and run VASP on pockets
-        # check to see if VASP scores and VASP pockets directory exists
-        if not os.path.exists(f'{outputdir}VASP'):
-            os.mkdir(f'{outputdir}VASP')
-        if not os.path.exists(f'{outputdir}VASP/scores'):
-            os.mkdir(f'{outputdir}VASP/scores')
-        if not os.path.exists(f'{outputdir}VASP/pockets'):
-            os.mkdir(f'{outputdir}VASP/pockets')
-        
         # write out checkpoint file
         chkpt = f'{outputdir}checkpoint.chk'
         open(chkpt, 'a').close()
 
         print('Preprocessing complete...')
     
-    
-    # conformational sampling for initial screen
-    short_sample = gen_short_sample(targetdir)
-    s = len(short_sample)
-    t = len(tracker)
-    
-    # target pocket volume
-    vol = float(open(f'{targetdir}vol.txt','r').readlines()[-1].split()[-1])
-
-    return tracker, t, s, short_sample, vol
+    return tracker 
 
 
-def pocket_search(i: int, structure: str, outputdir: str, pdbdir: str, 
-                targetdir: str, t: int, s: int, short_sample: List[str], 
-                min_intersect:float, vol: float, screen: float, 
-                min_hits: int) -> None:
+def get_homology_diagram(coords: List[float], outpath: str, name: str) -> None:
+    """
+    Given an input set of coordinates, generate a persistence homology diagram.
+    This is done using the ripser package from scikit-tda
+    Inputs:
+        coords
+    Outputs:
+        None
+    """
+    diagram = ripser.ripser(coords, maxdim=2)['dgms']
+    np.save(f'{outpath}/{name}.npy', diagram)
+
+
+def obtain_wasserstein(diag1: np.ndarray, diag2: np.ndarray, 
+                     outpath: str, name: str) -> None:
+    """
+    Takes two input persistence diagrams and computes the wasserstein
+    distance between them. Writes this distance out to a file.
+    Inputs:
+        diag1
+        diag2
+        outpath
+        name
+    Outputs:
+        None
+    """
+    wasserstein = [persim.wasserstein(d1, d2) for (d1, d2) in zip(diag1, diag2)]
+    np.save(f'{outpath}/scores/{name}.npy', np.array(wasserstein))
+
+
+#FIXME
+def pocket_search(structure: str, outputdir: str, pdbdir: str, targetdir: str) -> None:
     """
     The main pocketSearch flow control function. Takes singular elements of the
     total pocketSearch geometric screen and generates surface files, obtains the
     intersection surface with the target and scores all the intersections.
     Inputs:
-        i
         structure
         outputdir
         pdbdir
         targetdir
-        t
-        s
-        short_sample
-        min_intersect
-        vol
-        screen
-        min_hits
-        chkpt
     Outputs:
         None
     """
 
-    # dummy variables to guide conformational sampling
-    tSamp = np.full(6,True)
     print(f'-----Running on: {structure}-----')
     
-    # get surf file
-    gen_surfs(outputdir, pdbdir, structure)
-    
-    # run short screen of intersect VASP on each structure
-    intersect(outputdir, targetdir, structure, i, t, s,
-                            short_sample, full=False)
-    
+    # get coordinates of current pocket
+    get_homology_diagram()
+    obtain_wasserstein()
+
     # get scores and update scorefile
     extract_score(outputdir, structure)
-    original_volume(outputdir, structure)
     
-    result, tSamp = screen_check(outputdir, structure, screen*vol, tSamp)
-
-    # only perform full intersect sampling if initial screen passed,
-    # also performs only translations in directions that pass Samp
-    if np.any(np.append(result,tSamp)):
-            print(f'-----Full Screen on: {structure}-----')
-            long_sample = gen_long_sample(targetdir,short_sample,result,tSamp)
-            intersect(outputdir,targetdir,structure,i,t,
-                              len(long_sample),long_sample)
-
-            # extract each score
-            extract_score(outputdir,structure)
-
     # append scorefile
     append_scorefile(outputdir, pdbdir, structure, min_intersect, vol)
 
@@ -960,16 +639,13 @@ def pocket_search(i: int, structure: str, outputdir: str, pdbdir: str,
     rosetta_prep(outputdir, pdbdir, min_intersect, min_hits, structure)
 
     # move scored structures
-    #move_scored_structures(outputdir, pdbdir)
+    move_scored_structures(outputdir, pdbdir)
     
     # update checkpoint file
     update_checkpoint(outputdir, structure)
 
-    # remove surf/vasp files. they take up an enormous amount of storage
-    # otherwise (~500Mb per structure ran)
-    delete_surfs(structure, outputdir)
 
-
+#FIXME
 def postprocessing(outdir: str) -> None:
     """
     Cleans up scorefile so that it is easier to read.
