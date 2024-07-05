@@ -101,10 +101,10 @@ def get_info(pdbpath: str) -> None:
         cofactors = 'NONE'
 
     # write out all info to file
-    if not os.path.exists(f'{directory}infofiles/'):
-        os.mkdir(f'{directory}infofiles/')
+    if not os.path.exists(f'{directory}/infofiles/'):
+        os.mkdir(f'{directory}/infofiles/')
 
-    outfile = f'{directory}infofiles/{structure[:-4]}.info'
+    outfile = f'{directory}/infofiles/{structure[:-4]}.info'
     with open(outfile, 'w') as out:
         out.write(f'{title}\n')
         out.write(f'{exp_info.strip()}\n')
