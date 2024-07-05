@@ -51,7 +51,7 @@ def get_info(pdbpath: str) -> None:
         returns None, writes info to file in pdb directory
     """
     
-    structure, directory = os.path.split(pdbpath)
+    directory, structure = os.path.split(pdbpath)
 
     # read file
     reader = [line for line in open(pdbpath).readlines()]
