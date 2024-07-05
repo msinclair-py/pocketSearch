@@ -825,7 +825,8 @@ def preprocess(checkpoint: bool, pdbdir: str, targetdir: str,alpha: float,
             os.mkdir(f'{pdbdir}/original_pdbs/')
             
         for unclean in glob.glob(f'{pdbdir}*.pdb'):
-            get_info(os.path.basename(unclean), pdbdir) 
+            getme = pdbdir + os.path.basename(unclean)
+            get_info(getme) 
             clean(unclean)
 
         # get target pocket alpha sphere count for fpocket cutoff calculation
