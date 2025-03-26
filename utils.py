@@ -175,7 +175,8 @@ def write_pockets(directory: str, pock: str, maximum: int) -> None:
         
         infile = open(f'{directory}{pock[:-4]}/{pock}','r')
         pock_array = [line for line in infile if "STP" in line]
-        pocketID = [int(line.split()[5]) for line in pock_array]
+        pocketID = [int(line[22:26].strip()) for line in pock_array]
+        #pocketID = [int(line.split()[5]) for line in pock_array]
 
         uniq = np.unique(np.array(pocketID))
         for i in range(uniq.shape[0]):
