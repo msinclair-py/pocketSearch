@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-import argparse, os
+import argparse
+import os
+from pathlib import Path
 import ray
 from utils import *
 
@@ -42,9 +44,9 @@ parser.add_argument('-mp', '--multiprocessing', dest='mp', default=1,
 args = parser.parse_args()
 
 # initialize all options to corresponding variables
-pdbdir = args.pdbdir
-outputdir = args.outputdir
-targetdir = args.targetdir
+pdbdir = Path(args.pdbdir)
+outputdir = Path(args.outputdir)
+targetdir = Path(args.targetdir)
 alpha = float(args.alpha)
 cutoff = float(args.cutoff)
 min_intersect = float(args.filt)
@@ -52,11 +54,6 @@ min_hits = int(args.hilt)
 screen = float(args.screen)
 checkpoint = args.checkpoint
 multiprocessing = int(args.mp)
-
-# make sure directories have correct formatting
-pdbdir = check_format(pdbdir)
-outputdir = check_format(outputdir)
-targetdir = check_format(targetdir)
 
 # run preprocessing
 preprocessed = preprocess(checkpoint, pdbdir, targetdir, alpha, cutoff, outputdir)

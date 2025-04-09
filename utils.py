@@ -1,30 +1,15 @@
 #!/usr/bin/env python
 import glob, os, shutil, subprocess
 import numpy as np
+from pathlib import Path
 from scipy.spatial.distance import cdist
-from typing import List, Tuple
+from typing import List, Tuple, Union
 from aliases import fpocket, surf, vasp
 from coordinate_manipulation import Coordinates
 
-def check_format(directory: str) -> str:
-        """
-        Reformats directory name for downstream consistency.
-        Inputs:
-                directory - directory to be checked
-        Outputs:
-                returns directory with last character '/'
-        """
+PathLike = Union[str, Path]
 
-        if directory[-1] != '/':
-                directory = f'{directory}/'
-        if not os.path.exists(directory):
-                print('Directory doesn\'t exist')
-        else:
-                print('Directory exists')
-        return directory
-
-
-def format_pdbs(directory: str) -> None:
+def format_pdbs(directory: PathLike) -> None:
         """
         Reformats file format for all files in 
         specified directory.
@@ -33,15 +18,12 @@ def format_pdbs(directory: str) -> None:
         Outputs:
                 returns None, all .ent files converted to .pdb
         """
+        for f in directory.glob('*'):
+            if f.suffix == '.ent':
+                new_f = f.with_suffix('.pdb')
+                os.rename(f, new_f)
 
-        for f in glob.glob(f'{directory}/*'):
-                old = os.path.basename(f)
-                if old[-4:] == '.ent':
-                        new = f'{old[3:-4]}.pdb'
-                        os.rename(f,f'{directory}{new}')
-
-
-def get_info(pdbpath: str) -> None:
+def get_info(pdbpath: PathLike) -> None:
     """
     Obtain relevant information for each structure (protein name,
     experimental method, resolution, any cofactors).
@@ -50,11 +32,11 @@ def get_info(pdbpath: str) -> None:
     Outputs:
         returns None, writes info to file in pdb directory
     """
-    
-    directory, structure = os.path.split(pdbpath)
+    directory = pdbpath.parent
+    structure = pdbpath.name
 
     # read file
-    reader = [line for line in open(pdbpath).readlines()]
+    reader = [line for line in open(str(pdbpath)).readlines()]
     print(structure)
     
     # obtain title
@@ -101,8 +83,8 @@ def get_info(pdbpath: str) -> None:
         cofactors = 'NONE'
 
     # write out all info to file
-    if not os.path.exists(f'{directory}/infofiles/'):
-        os.mkdir(f'{directory}/infofiles/')
+    info_path = directory / 'infofiles'
+    info_path.mkdir(exist_ok=True)
 
     outfile = f'{directory}/infofiles/{structure[:-4]}.info'
     with open(outfile, 'w') as out:
@@ -111,7 +93,7 @@ def get_info(pdbpath: str) -> None:
         out.write(f'{cofactors.strip()}')                                 
 
 
-def clean(structure: str) -> None: 
+def clean(structure: PathLike) -> None: 
     """
     PDBs straight from RCSB have a lot of information we don't care about.
     We need to isolate chain A and also filter out any alternative residues.
@@ -153,13 +135,12 @@ def clean(structure: str) -> None:
     shutil.move(structure, f'{fpath}{filename}')
 
     with open(structure,'w') as outfile:
-            for line in final:
-                    outfile.write(line)
+        for line in final:
+            outfile.write(line)
 
     outfile.close()
 
-
-def write_pockets(directory: str, pock: str, maximum: int) -> None:
+def write_pockets(directory: PathLike, pock: str, maximum: int) -> None:
         """
         Writes out pocket files according within the specified cutoffs.
         fpocket already filtered out any pockets with less than 80 dummy atoms,
@@ -176,18 +157,16 @@ def write_pockets(directory: str, pock: str, maximum: int) -> None:
         infile = open(f'{directory}{pock[:-4]}/{pock}','r')
         pock_array = [line for line in infile if "STP" in line]
         pocketID = [int(line[22:26].strip()) for line in pock_array]
-        #pocketID = [int(line.split()[5]) for line in pock_array]
 
         uniq = np.unique(np.array(pocketID))
         for i in range(uniq.shape[0]):
-                j=i+1
-                a = pocketID.count(j)
-                if a < maximum:
-                        outfile = open(f'{directory}{pock.split("_")[0]}.pocket{j}.pdb','w')
-                        [outfile.write(line) for line in pock_array if int(line[22:26].strip()) == uniq[i]]
+            j=i+1
+            a = pocketID.count(j)
+            if a < maximum:
+                outfile = open(f'{directory}{pock.split("_")[0]}.pocket{j}.pdb','w')
+                [outfile.write(line) for line in pock_array if int(line[22:26].strip()) == uniq[i]]
 
-
-def identify_cofactors(directory: str) -> None:
+def identify_cofactors(directory: PathLike) -> None:
         """
         Iterate through each generated pocket that passes filters to identify
         which, if any, cofactors would have inhabited the pocket. This is
@@ -202,79 +181,80 @@ def identify_cofactors(directory: str) -> None:
         
         # generate a list of every pocket, skips over aligned pockets if this is
         # a restart run due to aligned pockets lacking the .pdb extension
-        all_pockets = [ p for p in glob.glob(f'{directory}*pocket*.pdb') ]
+        all_pockets = [p for p in directory.glob('*pocket*.pdb')]
 
         # go through each pocket to determine if it inhabits a cofactor's space
         for pocket in all_pockets:
-                base = os.path.basename(pocket)
-                pnum = base.split('.')[1]
+            base = os.path.basename(pocket)
+            pnum = base.split('.')[1]
 
-                print(base)
-                # location and name of corresponding infofile
-                infodir = f'{directory}infofiles/'
-                infofile = f'{infodir}{base[:4]}.info'
-                
-                # read whole infofile, specifically take the cofactor line for now
-                infolines = [line for line in open(infofile).readlines()]
-                cofactline = infolines[-1]
-                
-                if cofactline != 'NONE':
-                        # cofactor format is - 3 letter code: full name: pocket#/'Not present'; .....
-                        cofactors = [c.split(':')[0].strip() for c in cofactline.split(';')]
+            print(base)
+            # location and name of corresponding infofile
+            infodir = f'{directory}infofiles/'
+            infofile = f'{infodir}{base[:4]}.info'
+            
+            # read whole infofile, specifically take the cofactor line for now
+            infolines = [line for line in open(infofile).readlines()]
+            cofactline = infolines[-1]
+            
+            if cofactline != 'NONE':
+                # cofactor format is - 3 letter code: full name: pocket#/'Not present'; .....
+                cofactors = [c.split(':')[0].strip() for c in cofactline.split(';')]
 
-                        # get pocket coordinates
-                        c = [[l[30:38].strip(),l[38:46].strip(),l[46:54].strip()] for l in open(pocket).readlines()]
+                # get pocket coordinates
+                c = [[l[30:38].strip(),l[38:46].strip(),l[46:54].strip()] for l in open(pocket).readlines()]
 
-                        # extract all heteroatom coordinate lines from original pdb
-                        cof = [line for line in open(f'{directory}original_pdbs/{base[:4]}.pdb').readlines() if line[:6] == 'HETATM']
+                # extract all heteroatom coordinate lines from original pdb
+                cof = [line for line in open(f'{directory}original_pdbs/{base[:4]}.pdb').readlines() if line[:6] == 'HETATM']
 
-                        # generate array where 0 = cofactor not in pocket, 1 = cofactor in pocket
-                        # initially all cofactors set to 0
-                        cof_present = np.array([[c,0] for c in cofactors])
-                        for i, cofactor in enumerate(cofactors):
-                                # get specific cofactor coordinates
-                                c2 = [[l[30:38].strip(),l[38:46].strip(),l[46:54].strip()] for l in cof if l[17:20].strip() == cofactor]
+                # generate array where 0 = cofactor not in pocket, 1 = cofactor in pocket
+                # initially all cofactors set to 0
+                cof_present = np.array([[c,0] for c in cofactors])
+                for i, cofactor in enumerate(cofactors):
+                    # get specific cofactor coordinates
+                    c2 = [[l[30:38].strip(),l[38:46].strip(),l[46:54].strip()] for l in cof if l[17:20].strip() == cofactor]
 
-                                # measure minimum pairwise euclidean distance of cofactor and pocket coords
-                                d = np.min(np.min(cdist(np.array(c).astype(float), np.array(c2).astype(float), 'euclidean')))
+                    # measure minimum pairwise euclidean distance of cofactor and pocket coords
+                    d = np.min(np.min(cdist(np.array(c).astype(float), np.array(c2).astype(float), 'euclidean')))
 
-                                # cofactor occupacy of pocket defined as any pair of atoms <1 angstrom, set array to 1
-                                if d < 1:
-                                        cof_present[np.where(cof_present == cofactor)[0][0],1] = 1
+                    # cofactor occupacy of pocket defined as any pair of atoms <1 angstrom, set array to 1
+                    if d < 1:
+                        cof_present[np.where(cof_present == cofactor)[0][0],1] = 1
 
-                        # identified array tracks any changes to make to infofile
-                        identified = []
-                        for i, cofactor in enumerate(cofactline.split(';')):
-                                # info contains just the info for the current cofactor
-                                info = [c.strip() for c in cofactor.split(':')]
+                # identified array tracks any changes to make to infofile
+                identified = []
+                for i, cofactor in enumerate(cofactline.split(';')):
+                    # info contains just the info for the current cofactor
+                    info = [c.strip() for c in cofactor.split(':')]
 
-                                # if the entry for this cofactor in cof_present is '1', it occupies this pocket
-                                if cof_present[np.where(cof_present == info[0])[0][0],1] == '1':
-                                        # if this cofactor HAS NOT been assigned a pocket, assign this one
-                                        if info[-1] == 'Not present':
-                                                info[-1] = pnum
-                                        # if this cofactor HAS been assigned a pocket, append this one
-                                        else:
-                                                info[-1] = ', '.join([info[-1],pnum])
-                                identified.append(info)
+                    # if the entry for this cofactor in cof_present is '1', it occupies this pocket
+                    if cof_present[np.where(cof_present == info[0])[0][0],1] == '1':
+                            # if this cofactor HAS NOT been assigned a pocket, assign this one
+                            if info[-1] == 'Not present':
+                                info[-1] = pnum
+                            # if this cofactor HAS been assigned a pocket, append this one
+                            else:
+                                info[-1] = ', '.join([info[-1],pnum])
 
-                        # generate the updated cofactor info line
-                        new_cofline = []
-                        for i in range(len(identified)):
-                                cur = ': '.join(identified[i])
-                                if i > 0:
-                                        new_cofline = '; '.join([new_cofline, cur])
-                                else:
-                                        new_cofline = cur
+                    identified.append(info)
 
-                        # write out updated infofile
-                        with open(infofile,'w') as out:
-                                out.write(f'{infolines[0]}')
-                                out.write(f'{infolines[1]}')
-                                out.write(f'{new_cofline}')
+                # generate the updated cofactor info line
+                new_cofline = []
+                for i in range(len(identified)):
+                    cur = ': '.join(identified[i])
+                    if i > 0:
+                        new_cofline = '; '.join([new_cofline, cur])
+                    else:
+                        new_cofline = cur
+
+                # write out updated infofile
+                with open(infofile,'w') as out:
+                    out.write(f'{infolines[0]}')
+                    out.write(f'{infolines[1]}')
+                    out.write(f'{new_cofline}')
 
 
-def principal (array: List[float]) -> List[float]:
+def principal(array: np.ndarray) -> np.ndarray:
         """
         Find the principal axis in a point cloud.
         Inputs:
@@ -291,7 +271,8 @@ def principal (array: List[float]) -> List[float]:
         return axis1
 
 
-def align(array: List[float], a: List[float]) -> List[float]:
+def align(array: np.ndarray, 
+          a: np.ndarray) -> np.ndarray:
         """
         Align a point cloud with its principal axis along
         the z-axis. This is done according to the formula:
@@ -310,13 +291,21 @@ def align(array: List[float], a: List[float]) -> List[float]:
         v = np.cross(a,b) 
         c = np.dot(a,b) 
         I = np.eye(3,3)
-        vx = np.array([[0,-v[2],v[1]],[v[2],0,-v[0]],[-v[1],v[0],0]])
+
+        vx = np.array(
+            [
+                [0,    -v[2],  v[1]],
+                [v[2],     0, -v[0]],
+                [-v[1], v[0],     0]
+            ]
+        )
         R = I + vx + (vx @ vx)/(1+c)
         aligned = R @ array.T
+
         return aligned.T        
 
 
-def center(array: List[float]) -> List[float]:
+def center(array: np.ndarray) -> np.ndarray:
         """
         Moves a point cloud so the geometric center is at the
         origin (0,0,0). Accomplished by subtracting each point
@@ -327,14 +316,16 @@ def center(array: List[float]) -> List[float]:
                 centered - array of recentered points
         """
 
-        centered=np.zeros((array.shape[0],array.shape[1]))
-        com=array.mean(0)
+        centered = np.zeros((array.shape[0], array.shape[1]))
+        com = array.mean(0)
+
         for i in range(array.shape[0]):
             centered[i] = array[i] - com
+
         return centered
 
-
-def find_pockets(indir: str, alphas: int) -> None:
+def find_pockets(indir: PathLike, 
+                 alphas: int) -> None:
         """
         Run fpocket for all pdbs in a given directory.
         Inputs:
@@ -347,16 +338,16 @@ def find_pockets(indir: str, alphas: int) -> None:
                         whether output directories contain files
         """
 
-        for i in glob.glob(f'{indir}*.pdb'):
-            root = os.path.basename(i).split('.')[0]
-            if not os.path.exists(f'{indir}{root}_out/'):
+        for pdb in indir.glob('*.pdb'):
+            root = pdb.name.split('.')[0]
+            if not (indir / f'{root}_out').exists:
                 print(f'---RUNNING fpocket ON {root}---')
-                args=(fpocket,'-f',i,'-i',alphas)
-                str_args=[ str(x) for x in args ]
-                subprocess.run(str_args)
-        
+                args = (fpocket, '-f', pdb, '-i', str(alphas))
+                subprocess.run(args)
 
-def gen_surfs(outdir: str, indir: str, pocket: str) -> None:
+def gen_surfs(outdir: PathLike, 
+              indir: PathLike, 
+              pocket: str) -> None:
         """
         Run SURF to generate surf file of given pocket.
         Inputs:
@@ -367,18 +358,26 @@ def gen_surfs(outdir: str, indir: str, pocket: str) -> None:
                 returns None, runs SURF and outputs logfile
         """
 
-        pock = f'{indir}aligned.{pocket}'
+        pock = indir / f'aligned.{pocket}'
         print(pocket)
-        n = pocket.split('.')[0]
-        p = pocket.split('.')[1]
-        arg = (surf,'-surfProbeGen',pock,f'{outdir}VASP/pockets/{n}_{p}.SURF',3,.5)
-        str_arg = [ str(x) for x in arg ]
-        out = open(f'{outdir}VASP/pockets/surf.log','w')
-        subprocess.run(str_arg, stdout=out)
+        n, p = pocket.split('.')[:2]
+
+        arg = (surf, '-surfProbeGen', pock, outdir / 'VASP' / 'pockets' / f'{n}_{p}.SURF', '3', '.5')
+        out_name = outdir / 'VASP' / 'pockets' / 'surf.log'
+        out = open(str(outname), 'w')
+
+        subprocess.run(arg, stdout=out)
+        out.close()
 
 
-def intersect(outdir: str, initial: str, pocket: str, snum: int, 
-               total: int, samples: int, catalogue: List[str], full: bool = True) -> None:
+def intersect(outdir: PathLike, 
+              initial: PathLike, 
+              pocket: str, 
+              snum: int, 
+              total: int, 
+              samples: int, 
+              catalogue: List[str], 
+              full: bool = True) -> None:
         """
         Run intersect VASP on given pocket.
 
@@ -403,37 +402,34 @@ def intersect(outdir: str, initial: str, pocket: str, snum: int,
         # clean up outputs so that you can perform operations in
         # the VASP directory, otherwise too many files
         if not os.path.exists(f'{outdir}VASP/{n}/'):
-                os.mkdir(f'{outdir}VASP/{n}/')
+            os.mkdir(f'{outdir}VASP/{n}/')
 
         for init in catalogue:
-                count += 1
-                if full:
-                        modulo = 25
-                else:
-                        modulo = 5
-                if (count%500==0):
-                        print(f'-----{snum+1}/{total} pockets to be sampled-----')
-                if (count%modulo==0):
-                        print(f'{pocket}: {count}/{samples} conformations')
+            count += 1
+            if full:
+                modulo = 25
+            else:
+                modulo = 5
 
-                fname = os.path.basename(init).split('.')
-                conf = fname[1]
-                rot = fname[2]
-                tilt = fname[3]
-                trans = fname[4]
-                flip = fname[5]
-                arg = (vasp,'-csg',struc,init,'I',f'{outdir}VASP/{n}/intersect.{n}.{conf}.{rot}.{tilt}.{trans}.{flip}.SURF',.5)
-                str_arg = [ str(x) for x in arg ]
-                out = open(f'{outdir}intersect.log','w')
-                subprocess.run(str_arg, stdout=out)
+            if (count%500==0):
+                print(f'-----{snum+1}/{total} pockets to be sampled-----')
 
-        arg2 = (surf,'-surveyVolume',struc)
-        str_arg2 = [ str(x) for x in arg2 ]
-        out = open(f'{outdir}VASP/pockets/{n}.vol.txt','w')
-        subprocess.run(str_arg2, stdout=out)
+            if (count%modulo==0):
+                print(f'{pocket}: {count}/{samples} conformations')
 
+            fname = os.path.basename(init).split('.')[:5]
+            surf_file = outdir / 'VASP' / str(n) / f'intersect.{n}.{".".join(fname)}.SURF'
+            arg = (vasp, '-csg', struc, init, 'I', surf_file, '.5')
+            out = open(out / 'intersect.log','w')
+            subprocess.run(arg, stdout=out)
+            out.close()
 
-def gen_short_sample(targetDir: str) -> List[str]:
+        arg = (surf, '-surveyVolume', struc)
+        out = open(outdir / 'VASP' / 'pockets' / f'{n}.vol.txt', 'w')
+        subprocess.run(arg, stdout=out)
+        out.close()
+
+def gen_short_sample(targetDir: PathLike) -> np.ndarray:
         """
         Generate the short sampling array.
         Inputs:
@@ -443,15 +439,14 @@ def gen_short_sample(targetDir: str) -> List[str]:
                                 short screen
         """
 
-        short = glob.glob(f'{targetDir}*conf0.*.*.0.0.SURF')
-        translations = glob.glob(f'{targetDir}*conf0.0.0.*.0.SURF')
-        short = np.append(short,translations)
-        short = np.unique(short)
-        return short
+        short = targetDir.glob('*conf0*.0.0.SURF')
+        translations = targetDir.glob('*conf0.0.0.*.0.SURF')
+        return np.unique(np.append(short, translations))
 
-
-def gen_long_sample(initialdir: str, short: List[str], 
-                     _result: bool, _tSamp: List[bool]) -> List[str]:
+def gen_long_sample(initialdir: PathLike, 
+                    short: np.ndarray, 
+                    _result: bool, 
+                    _tSamp: List[bool]) -> np.ndarray:
         """
         Generate the long sampling array. This is done by subtracting out
         the short array from the totality of structures. Also, the translational
@@ -466,27 +461,26 @@ def gen_long_sample(initialdir: str, short: List[str],
         """
         
         if _result:
-                # remove the short sample from the full list
-                full = glob.glob(f'{initialdir}*.SURF')
-                full = np.setdiff1d(full,short)
+            # remove the short sample from the full list
+            full = np.setdiff1d(initialdir.glob('*.SURF'), short)
 
-                # remove appropriate translations from the full list
-                for i,trans in enumerate(_tSamp):
-                        if not trans:
-                                translation = glob.glob(f'{initialdir}*conf*.*.*.{i+1}.*.SURF')
-                                full = np.setdiff1d(full,translation)
+            # remove appropriate translations from the full list
+            for i, trans in enumerate(_tSamp):
+                if not trans:
+                    translation = initialdir.glob('*conf*.*.*.{i+1}.*.SURF')
+                    full = np.setdiff1d(full, translation)
 
         else: # this means the non-translated screen failed
-                full = np.array([])
-                for i,trans in enumerate(_tSamp):
-                        if trans:
-                                translation = glob.glob(f'{initialdir}*conf*.*.*.{i+1}.*.SURF')
-                                full = np.append(full,translation)
+            full = np.array([])
+            for i, trans in enumerate(_tSamp):
+                if trans:
+                    translation = initialdir.glob('*conf*.*.*.{i+1}.*.SURF')
+                    full = np.append(full, translation)
 
         return full
 
-
-def extract_score(outdir: str, pocket: str) -> None:
+def extract_score(outdir: PathLike, 
+                  pocket: str) -> None:
         """
         Runs SURF to get the intersect score for all intersections performed
         on supplied pocket.
@@ -497,22 +491,19 @@ def extract_score(outdir: str, pocket: str) -> None:
                 returns None, runs SURF -surveyVolume to generate scores
         """
         
-        n, pock = pocket.split('.')[0], pocket.split('.')[1]
-        for inter in glob.iglob(f"{outdir}VASP/{n}_{pock}/*.SURF"):
-                p = os.path.basename(inter).split('.')
-                na = p[1]
-                co = p[2]
-                ro = p[3]
-                ti = p[4]
-                tr = p[5]
-                fl = p[6]
-                arg = (surf,'-surveyVolume',inter)
-                out = open(f'{outdir}VASP/{n}_{pock}/{na}_{co}_{ro}_{ti}_{tr}_{fl}_iscore.txt','w')
-                str_arg = [ str(x) for x in arg ]
-                subprocess.run(str_arg, stdout=out)
+        name = '_'.join(pocket.split('.')[:2])
+        for inter in (outdir / 'VASP' / name).glob('*.SURF'):
+            p = '_'.join(inter.name.split('.')[1:7])
+            arg = (surf, '-surveyVolume', inter)
+            out = open(outdir / 'VASP' / name / f'{p}_iscore.txt', 'w')
+            subprocess.run(arg, stdout=out)
+            out.close()
 
 
-def screen_check(outdir: str, pocket: str, cut: float, _tSamp: List[bool]) -> Tuple[bool, List[bool]]:
+def screen_check(outdir: PathLike, 
+                 pocket: str, 
+                 cut: float, 
+                 _tSamp: List[bool]) -> Tuple[bool, List[bool]]:
         """
         Check if a short screen was successful. Additionally, map out
         which translations to perform in full sampling.
@@ -526,26 +517,31 @@ def screen_check(outdir: str, pocket: str, cut: float, _tSamp: List[bool]) -> Tu
                 _tSamp = updated copy of tSamp
         """
         result = False
-        n = pocket.split('.')[0]
-        p = pocket.split('.')[1]
+        name = '_'.join(pocket.split('.')[:2])
 
         # check small screen first
-        sText = f'{outdir}VASP/{n}_{p}/{n}_{p}_conf0*_0_0_iscore.txt'
-        values = np.array([float([lines.split() for lines in open(struc,'r')][-1][-1])
-                                                for struc in glob.glob(sText)])
+        sText = outdir / 'VASP' / name
+        values = np.array(
+            [
+                float([lines.split() for lines in open(struc, 'r')][-1][-1])
+                for struc in sText.glob(f'{name}_conf0*_0_0_iscore.txt')
+            ]
+        )
+
         if np.where(values > cut)[0].size > 0:
                 result = True
 
         for i in range(len(_tSamp)):
-                tInt = [line.split() for line in \
-                                open(f'{outdir}VASP/{n}_{p}/{n}_{p}_conf0_0_0_{i+1}_0_iscore.txt').readlines()][-1][-1]
-                if float(tInt) < cut:
-                        _tSamp[i] = False
+            scorefile = outdir / 'VASP' / name / f'{name}_conf0_0_0_{i+1}_0_iscore.txt'
+            tInt = [line.split() 
+                    for line in open(scorefile).readlines()][-1][-1]
+            _tSamp[i] = float(tInt) > cut
 
         return result, _tSamp
 
 
-def original_volume(outdir: str, p: str) -> None:
+def original_volume(outdir: PathLike, 
+                    p: str) -> None:
         """
         Runs SURF -surveyVolume on supplied pocket.
         Inputs:
@@ -555,15 +551,15 @@ def original_volume(outdir: str, p: str) -> None:
                 returns None, generates volume file for pocket
         """
 
-        v = f"{outdir}VASP/pockets/{p.split('.')[0]}_{p.split('.')[1]}.SURF"
-        n = os.path.basename(v).split('.')[0]
-        arg = (surf,'-surveyVolume',v)
-        out = open(f'{outdir}VASP/pockets/{n}.vol.txt','w')
-        str_arg = [ str(x) for x in arg ]
-        subprocess.run(str_arg, stdout=out)
+        v = outdir / 'VASP' / 'pockets' / f'{"_".join(p.split(".")[:2])}.SURF'
+        n = v.name.split('.')[0]
+        arg = (surf, '-surveyVolume', v)
+        out = open(outdir / 'VASP' / 'pockets' / f'{n}.vol.txt', 'w')
+        subprocess.run(arg, stdout=out)
+        out.close()
 
 
-def gen_scorefile(outdir: str) -> bool:
+def gen_scorefile(outdir: PathLike) -> bool:
     """
     Generates new scorefile or returns False if one exists. If a scorefile exists the main
     function should throw an error as you may be overwriting previous data.
@@ -572,8 +568,8 @@ def gen_scorefile(outdir: str) -> bool:
     Returns:
         bool - True if file written, False if it already exists
     """
-    filepath = f'{outdir}score.txt'
-    if os.path.exists(filepath):
+    filepath = outdir / 'score.txt'
+    if filepath.exists:
         return False
 
     else:
@@ -587,8 +583,11 @@ def gen_scorefile(outdir: str) -> bool:
         return True
      
 
-def append_scorefile(outdir: str, pdbdir: str, struc: str, 
-                   filt: float, vol: float) -> None:
+def append_scorefile(outdir: PathLike, 
+                     pdbdir: PathLike, 
+                     struc: str, 
+                     filt: float, 
+                     vol: float) -> None:
         """
         Appends run to scorefile. Checks if structure has been written to file before
         and outputs updated values if so. 
@@ -603,15 +602,15 @@ def append_scorefile(outdir: str, pdbdir: str, struc: str,
         """
 
         print(struc)    
-        pdb = struc.split('.')[0]
-        pock = struc.split('.')[1]
+        pdb, pock = struc.split('.')[:2]
 
         # get pocket volume from vol file
-        f = open(f'{outdir}VASP/pockets/{pdb}_{pock}.vol.txt').readlines()[-1]
+        vasp = outdir / 'VASP'
+        f = open(VASP / 'pockets' / f'{pdb}_{pock}.vol.txt').readlines()[-1]
         v = float(f.split()[-1])
 
         # list of all scorefiles to extract data from
-        scores = [s for s in glob.glob(f'{outdir}VASP/{pdb}_{pock}/*_iscore.txt')]
+        scores = [s for s in (vasp / f'{pdb}_{pock}').glob('*_iscore.txt')]
 
         hitCounter = 0
         bestScore = 0
@@ -620,32 +619,32 @@ def append_scorefile(outdir: str, pdbdir: str, struc: str,
         print(f'-----Getting {pdb} {pock} Scores-----')
         # iterate through all scores and track hits and best int%
         for score in scores:
-                curScore = float(open(score).readlines()[-1].split()[-1])
-                if not bestScore or curScore > bestScore:
-                        bestScore = curScore
-                if curScore/vol > filt:
-                        hitCounter+=1
-                curScore = 0
+            curScore = float(open(score).readlines()[-1].split()[-1])
+            if not bestScore or curScore > bestScore:
+                bestScore = curScore
+            if curScore / vol > filt:
+                hitCounter += 1
+            curScore = 0
 
         print('-----Updating Scorefile-----')
 
         # get exp. method, cofactor and protein name information
-        info = [line for line in open(f'{pdbdir}infofiles/{pdb}.info').readlines()]
+        info = [line for line in open(pdbdir / 'infofiles' / f'{pdb}.info').readlines()]
         
         cofactor = None
         for cof in info[-1].split(';'):
             if cof.split(':')[-1].strip() == pock:
                 cofactor = ':'.join(cof.split(':')[:2])
         
-        l = [pdb, pock, vol, v, bestScore, float(bestScore/vol), hitCounter]
+        l = [pdb, pock, vol, v, bestScore, float(bestScore / vol), hitCounter]
         l += [info[1][:-2], cofactor, info[0][:-2]]
         l = [str(x) for x in l]
         
-        with open(f'{outdir}score.txt','a') as sfile:
+        with open(outdir / 'score.txt', 'a') as sfile:
             sfile.write(';'.join(l) + '\n')
 
-
-def delete_surfs(structure: str, outdir: str) -> None:
+def delete_surfs(structure: PathLike, 
+                 outdir: PathLike) -> None:
         """
         In an effort to keep the data footprint small, delete surf files. this
         should only be called after scorefile has been written out.
@@ -657,13 +656,15 @@ def delete_surfs(structure: str, outdir: str) -> None:
         """
         
         print(f'-----Cleaning up {structure} SURF/VASP files-----')
-        n, p = structure.split('.')[0], structure.split('.')[1]
-        shutil.rmtree(f'{outdir}VASP/{n}_{p}')
-        os.remove(f'{outdir}VASP/pockets/{n}_{p}.SURF')
-        os.remove(f'{outdir}VASP/pockets/{n}_{p}.vol.txt')
+        name = '_'.join(structure.split('.')[:2])
+        vasp = outdir / 'VASP'
+        shutil.rmtree(vasp / name)
+        os.remove(vasp / 'pockets' / f'{name}.SURF')
+        os.remove(vasp / 'pockets' / f'{name}.vol.txt')
 
 
-def move_scored_structures(outdir: str, pdbdir: str) -> None:
+def move_scored_structures(outdir: PathLike, 
+                           pdbdir: PathLike) -> None:
     """
     Function to move cleaned PDBs of structures that make it to the
     scorefile to an output directory.
@@ -675,28 +676,27 @@ def move_scored_structures(outdir: str, pdbdir: str) -> None:
             returns None, moves PDBs to output directory
     """
     
-    score = open(f'{outdir}score.txt', 'r')
+    score = open(outdir / 'score.txt', 'r')
     raw = [[ele.strip() for ele in line.split(';')[:2]] for line in score.readlines()]
     scored = ['.'.join(row) for row in raw]
 
     if not isinstance(raw[0], list):
         lst = lst.reshape((1,2))
         
-    path = f'{outdir}scored_pdbs/'
-
-    # ensure scored pdbs directory exists
-    if not os.path.exists(path):
-        os.mkdir(path)
+    path = outdir / 'scored_pdbs'
+    path.mkdir(exist_ok=True)
 
     # if pdb still in pdbdir and not in scored pdbs, move it there
     for pdb in scored:
-        if os.path.exists(f'{pdbdir}{pdb}.pdb'):
-            if not os.path.exists(f'{path}{pdb}.pdb'):
-                shutil.move(f'{pdbdir}{pdb}.pdb', path)
+        if (pdbdir / f'{pdb}.pdb').exists():
+            if not (path / f'{pdb}.pdb').exists():
+                shutil.move(pdbdir / f'{pdb}.pdb', path)
 
-
-def rosetta_prep(outdir: str, indir: str, filt: float, 
-                   hilt: int, pocket: str) -> None:
+def rosetta_prep(outdir: PathLike, 
+                 indir: PathLike, 
+                 filt: float, 
+                 hilt: int, 
+                 pocket: str) -> None:
     """
     This function generates rosetta .pos files for each structure that
     passes both the int% and hit filters. The scorefile is read and for each
@@ -711,12 +711,13 @@ def rosetta_prep(outdir: str, indir: str, filt: float,
     """
 
     # check if the rosetta output directoyr exists, else make it
-    if not os.path.exists(f'{outdir}rosetta'):
-            os.mkdir(f'{outdir}rosetta')
+    rdir = outdir / 'rosetta'
+    rdir.mkdir(exist_ok=True)
     
     # get our list of pose files to make from the scorefile
-    s = open(f'{outdir}score.txt', 'r')
+    s = open(outdir / 'score.txt', 'r')
     _ = s.readline()
+            
     raw = [[ele.strip() for ele in line.split(';')] for line in s.readlines()]
     s.close()
 
@@ -732,7 +733,7 @@ def rosetta_prep(outdir: str, indir: str, filt: float,
         if all([float(lst[i][5]) > filt, int(lst[i][6]) > hilt]):
             a = lst[i][0]
             b = ''.join([ x for x in lst[i][1] if x.isdigit() ])
-            fil = f'{indir}{a}_out/pockets/pocket{b}_atm.pdb'
+            fil = indir / f'{a}_out' / 'pockets' / f'pocket{b}_atm.pdb'
             
             lines = []
             with open(fil, 'r') as prefile:
@@ -741,7 +742,7 @@ def rosetta_prep(outdir: str, indir: str, filt: float,
                         lines.append(line.split()[:6])
 
             lines = np.asarray(lines)
-            pose_array = [resid for resid in lines[:,-1]]
+            pose_array = [resid for resid in lines[:, -1]]
 
             for i in range(len(pose_array)):
                 if pose_array[i] not in array:
@@ -751,13 +752,13 @@ def rosetta_prep(outdir: str, indir: str, filt: float,
                         array.append(pose_array[i])
 
             array = [ int(x) if x[-1].isdigit() else int(x[:-1]) for x in array ]
-            with open(f'{outdir}rosetta/{a}_pock{b}.pos','w') as outfile:
+            with open(rdir / f'{a}_pock{b}.pos', 'w') as outfile:
                 for line in sorted(array):
                     outline = ' '.join([str(x) for x in array])
                     outfile.write(outline)
 
-
-def restart_run(outputdir: str, pdbdir: str) -> List[str]:
+def restart_run(outputdir: PathLike, 
+                pdbdir: PathLike) -> List[str]:
     """
     Read in checkpoint file to restart a run.
     Inputs:
@@ -767,16 +768,17 @@ def restart_run(outputdir: str, pdbdir: str) -> List[str]:
         list of structures to run on
     """
 
-    f = open(f'{outputdir}checkpoint.chk', 'r')
+    f = open(outputdir / 'checkpoint.chk', 'r')
     complete = [line.strip() for line in f.readlines()]
     f.close()
 
-    total = [os.path.basename(pdb) for pdb in glob.glob(f'{pdbdir}*pocket*pdb')]
+    total = [pdb.name for pdb in pdbdir.glob('*pocket*pdb')]
 
-    return [b[:-4] for b in total if all(a not in b for a in complete)]
+    return [b[:-4] for b in total if not all(a in b for a in complete)]
 
 
-def update_checkpoint(outputdir: str, completed_structure: str) -> None:
+def update_checkpoint(outputdir: PathLike, 
+                      completed_structure: str) -> None:
     """
     Updates the checkpoint file with `pdb` and `pock` in the csv format.
     Inputs:
@@ -785,15 +787,17 @@ def update_checkpoint(outputdir: str, completed_structure: str) -> None:
     Returns:
         None
     """
-    
-    f = open(f'{outputdir}checkpoint.chk', 'a')
+    f = open(outputdir / 'checkpoint.chk', 'a')
     f.write(f'{completed_structure}\n')
     f.close()
 
-
-def preprocess(checkpoint: bool, pdbdir: str, targetdir: str,alpha: float, 
-                cutoff: float, outputdir: str) -> Tuple[List[str], int, int, 
-                                                        List[str], float]:
+def preprocess(checkpoint: bool, 
+               pdbdir: PathLike, 
+               targetdir: PathLike, 
+               alpha: float, 
+               cutoff: float, 
+               outputdir: str) -> Tuple[List[str], int, int, 
+                                        List[str], float]:
     """
     Preprocessing workflow. Setups up checkpointing and obtains list of
     structures to run pocketSearch on.
@@ -812,7 +816,6 @@ def preprocess(checkpoint: bool, pdbdir: str, targetdir: str,alpha: float,
         vol -
         chkpt -
     """
-
     # read in checkpoint; else do pocketSearch prepwork
     if checkpoint:
         tracker = restart_run(outputdir, pdbdir)
@@ -822,20 +825,15 @@ def preprocess(checkpoint: bool, pdbdir: str, targetdir: str,alpha: float,
         format_pdbs(pdbdir)
         
         # clean up pdbs, removing cofactors and renumbering where necessary
-        if not os.path.exists(f'{pdbdir}/original_pdbs/'):
-            os.mkdir(f'{pdbdir}/original_pdbs/')
+        (pdbdir / 'original_pdbs').mkdir(exist_ok=True)
             
-        for unclean in glob.glob(f'{pdbdir}*.pdb'):
-            getme = pdbdir + os.path.basename(unclean)
-            get_info(getme) 
+        for unclean in pdbdir.glob('*.pdb'):
+            get_info(unclean) 
             clean(unclean)
 
         # get target pocket alpha sphere count for fpocket cutoff calculation
-        for target in glob.glob(f'{targetdir}*pocket*'):
-            with open(target) as f:
-                for i, l in enumerate(f):
-                    pass
-                aspheres = i + 1
+        for target in targetdir.glob('*pocket*'):
+            aspheres = len(open(target).readlines()) + 1
     
         fpocket_min = int(aspheres * alpha)
         fpocket_max = int(aspheres * cutoff)
@@ -843,7 +841,7 @@ def preprocess(checkpoint: bool, pdbdir: str, targetdir: str,alpha: float,
         # generate pockets
         find_pockets(pdbdir, fpocket_min)
         
-        name_array=[os.path.basename(name) for name in glob.glob(f'{pdbdir}*_out/*_out.pdb')]
+        name_array = [pdb.name for pdb in pdbdir.glob('*_out/*_out.pdb')]
     
         print('Writing out pockets...') 
         for entry in name_array:
@@ -856,12 +854,12 @@ def preprocess(checkpoint: bool, pdbdir: str, targetdir: str,alpha: float,
         print('Processing pockets...')
         # center and align pockets
         prealigned = []
-        for name in glob.glob(f'{pdbdir}*.pocket*.pdb'):
+        for pdb in pdbdir.glob('*.pocket*.pdb'):
             # check if original pdb still there, if not it has been scored already
             # and this structure should be skipped
-            stem = os.path.basename(name).split('.')
-            if os.path.exists(f'{pdbdir}{stem[0]}.pdb'):
-                prealigned.append([stem[0],stem[1]])
+            stem = pdb.name.split('.')
+            if (pdbdir / f'{stem[0]}.pdb').exists():
+                prealigned.append([stem[0], stem[1]])
     
         tracker = []
         for entry in prealigned:
@@ -876,15 +874,14 @@ def preprocess(checkpoint: bool, pdbdir: str, targetdir: str,alpha: float,
         
         # generate surf files and run VASP on pockets
         # check to see if VASP scores and VASP pockets directory exists
-        if not os.path.exists(f'{outputdir}VASP'):
-            os.mkdir(f'{outputdir}VASP')
-        if not os.path.exists(f'{outputdir}VASP/scores'):
-            os.mkdir(f'{outputdir}VASP/scores')
-        if not os.path.exists(f'{outputdir}VASP/pockets'):
-            os.mkdir(f'{outputdir}VASP/pockets')
+        vasp = outputdir / 'VASP'
+        vasp.mkdir(exist_ok=True)
+        (vasp / 'scores').mkdir(exist_ok=True)
+        (vasp / 'pockets').mkdir(exist_ok=True)
         
         # write out checkpoint file
-        chkpt = f'{outputdir}checkpoint.chk'
+        # NOTE: WTF is this?
+        chkpt = outputdir / 'checkpoint.chk'
         open(chkpt, 'a').close()
 
         print('Preprocessing complete...')
@@ -896,15 +893,22 @@ def preprocess(checkpoint: bool, pdbdir: str, targetdir: str,alpha: float,
     t = len(tracker)
     
     # target pocket volume
-    vol = float(open(f'{targetdir}vol.txt','r').readlines()[-1].split()[-1])
+    vol = float(open(targetdir / 'vol.txt','r').readlines()[-1].split()[-1])
 
     return tracker, t, s, short_sample, vol
 
-
-def pocket_search(i: int, structure: str, outputdir: str, pdbdir: str, 
-                targetdir: str, t: int, s: int, short_sample: List[str], 
-                min_intersect:float, vol: float, screen: float, 
-                min_hits: int) -> None:
+def pocket_search(i: int, 
+                  structure: str, 
+                  outputdir: PathLike, 
+                  pdbdir: PathLike, 
+                  targetdir: PathLike, 
+                  t: int,
+                  s: int, 
+                  short_sample: List[str], 
+                  min_intersect:float, 
+                  vol: float, 
+                  screen: float, 
+                  min_hits: int) -> None:
     """
     The main pocketSearch flow control function. Takes singular elements of the
     total pocketSearch geometric screen and generates surface files, obtains the
@@ -926,17 +930,15 @@ def pocket_search(i: int, structure: str, outputdir: str, pdbdir: str,
     Outputs:
         None
     """
-
     # dummy variables to guide conformational sampling
-    tSamp = np.full(6,True)
+    tSamp = np.full(6, True)
     print(f'-----Running on: {structure}-----')
     
     # get surf file
     gen_surfs(outputdir, pdbdir, structure)
     
     # run short screen of intersect VASP on each structure
-    intersect(outputdir, targetdir, structure, i, t, s,
-                            short_sample, full=False)
+    intersect(outputdir, targetdir, structure, i, t, s, short_sample, full=False)
     
     # get scores and update scorefile
     extract_score(outputdir, structure)
@@ -946,14 +948,13 @@ def pocket_search(i: int, structure: str, outputdir: str, pdbdir: str,
 
     # only perform full intersect sampling if initial screen passed,
     # also performs only translations in directions that pass Samp
-    if np.any(np.append(result,tSamp)):
-            print(f'-----Full Screen on: {structure}-----')
-            long_sample = gen_long_sample(targetdir,short_sample,result,tSamp)
-            intersect(outputdir,targetdir,structure,i,t,
-                              len(long_sample),long_sample)
+    if np.any(np.append(result, tSamp)):
+        print(f'-----Full Screen on: {structure}-----')
+        long_sample = gen_long_sample(targetdir, short_sample, result, tSamp)
+        intersect(outputdir, targetdir, structure, i, t, len(long_sample), long_sample)
 
-            # extract each score
-            extract_score(outputdir,structure)
+        # extract each score
+        extract_score(outputdir, structure)
 
     # append scorefile
     append_scorefile(outputdir, pdbdir, structure, min_intersect, vol)
@@ -971,8 +972,7 @@ def pocket_search(i: int, structure: str, outputdir: str, pdbdir: str,
     # otherwise (~500Mb per structure ran)
     delete_surfs(structure, outputdir)
 
-
-def postprocessing(outdir: str) -> None:
+def postprocessing(outdir: PathLike) -> None:
     """
     Cleans up scorefile so that it is easier to read.
     Inputs:
@@ -980,13 +980,14 @@ def postprocessing(outdir: str) -> None:
     Outputs:
         None
     """
-    score = f'{outdir}score.txt'
-    sfile = open(f'{outdir}score.txt', 'r')
+    score = outdir / 'score.txt'
+    sfile = open(score, 'r')
     header = sfile.readline()
     contents = [line.split(';') for line in sfile.readlines()]
     sfile.close()
-
-    shutil.move(score, f'{outdir}score.BAK')
+    
+    backup = score.with_suffix('.BAK')
+    shutil.move(score, backup)
 
     with open(score, 'w') as outfile:
         outfile.write(header)
@@ -997,5 +998,4 @@ def postprocessing(outdir: str) -> None:
 
             outfile.write(oline)
 
-    outfile.close()
-    os.remove(f'{outdir}score.BAK')
+    os.remove(backup)
