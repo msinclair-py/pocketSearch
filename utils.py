@@ -1,13 +1,21 @@
 #!/usr/bin/env python
-import glob, os, shutil, subprocess
+from coordinate_manipulation import Coordinates
+import glob
+import os
 import numpy as np
 from pathlib import Path
 from scipy.spatial.distance import cdist
+import shutil
+import subprocess
 from typing import List, Tuple, Union
-from aliases import fpocket, surf, vasp
-from coordinate_manipulation import Coordinates
+import yaml
 
 PathLike = Union[str, Path]
+
+aliases = yaml.safe_load(open('aliases.yaml'))
+fpocket = aliases['fpocket']
+surf = aliases['surf']
+vasp = aliases['vasp']
 
 def format_pdbs(directory: PathLike) -> None:
         """
@@ -209,17 +217,22 @@ def identify_cofactors(directory: PathLike) -> None:
 
                 # generate array where 0 = cofactor not in pocket, 1 = cofactor in pocket
                 # initially all cofactors set to 0
-                cof_present = np.array([[c,0] for c in cofactors])
+                cof_present = np.array([[c, 0] for c in cofactors])
                 for i, cofactor in enumerate(cofactors):
                     # get specific cofactor coordinates
-                    c2 = [[l[30:38].strip(),l[38:46].strip(),l[46:54].strip()] for l in cof if l[17:20].strip() == cofactor]
+                    c2 = [
+                        [l[30:38].strip(), l[38:46].strip(), l[46:54].strip()] 
+                        for l in cof if l[17:20].strip() == cofactor
+                    ]
 
                     # measure minimum pairwise euclidean distance of cofactor and pocket coords
-                    d = np.min(np.min(cdist(np.array(c).astype(float), np.array(c2).astype(float), 'euclidean')))
+                    d = np.min(np.min(cdist(np.array(c).astype(float), 
+                                            np.array(c2).astype(float), 
+                                            'euclidean')))
 
                     # cofactor occupacy of pocket defined as any pair of atoms <1 angstrom, set array to 1
                     if d < 1:
-                        cof_present[np.where(cof_present == cofactor)[0][0],1] = 1
+                        cof_present[np.where(cof_present == cofactor)[0][0], 1] = 1
 
                 # identified array tracks any changes to make to infofile
                 identified = []
@@ -228,7 +241,7 @@ def identify_cofactors(directory: PathLike) -> None:
                     info = [c.strip() for c in cofactor.split(':')]
 
                     # if the entry for this cofactor in cof_present is '1', it occupies this pocket
-                    if cof_present[np.where(cof_present == info[0])[0][0],1] == '1':
+                    if cof_present[np.where(cof_present == info[0])[0][0], 1] == '1':
                             # if this cofactor HAS NOT been assigned a pocket, assign this one
                             if info[-1] == 'Not present':
                                 info[-1] = pnum
