@@ -1,7 +1,9 @@
 #!/usr/bin/env python
-import argparse, os
+import argparse
+import os
+from pathlib import Path
 import ray
-from utils import *
+from search import pocketSearcher
 
 # Define the parser
 parser = argparse.ArgumentParser(description='Take user-defined run-time \
@@ -42,53 +44,51 @@ parser.add_argument('-mp', '--multiprocessing', dest='mp', default=1,
 args = parser.parse_args()
 
 # initialize all options to corresponding variables
-pdbdir = args.pdbdir
-outputdir = args.outputdir
-targetdir = args.targetdir
+pdbdir = Path(args.pdbdir)
+outputdir = Path(args.outputdir)
+targetdir = Path(args.targetdir)
 alpha = float(args.alpha)
 cutoff = float(args.cutoff)
 min_intersect = float(args.filt)
 min_hits = int(args.hilt)
 screen = float(args.screen)
-checkpoint = args.checkpoint
+checkpoint = Path(args.checkpoint)
 multiprocessing = int(args.mp)
 
-# make sure directories have correct formatting
-pdbdir = check_format(pdbdir)
-outputdir = check_format(outputdir)
-targetdir = check_format(targetdir)
+aliases = Path('aliases.yaml')
 
-# run preprocessing
-preprocessed = preprocess(checkpoint, pdbdir, targetdir, alpha, cutoff, outputdir)
-tracker, t, s, short_sample, vol = preprocessed
+searcher = pocketSearcher(
+    pdbdir,
+    outputdir,
+    targetdir,
+    alpha,
+    cutoff,
+    min_intersect,
+    min_hits,
+    screen,
+    checkpoint,
+    aliases
+)
 
-# initialize scorefile
-gen_scorefile(outputdir)
-
-# run pocketSearch
 if multiprocessing:
-    # wrap with ray to enable multiprocessing
-    pocket_search = ray.remote(pocket_search)
-    
+    @ray.remote
+    def pocket_search(pocket_searcher: object,
+                      structure: str) -> None:
+        pocket_searcher.search(structure)
+
     # initialize ray
     ray.init()
     
-    # obtain parameters for ray
-    shared = [outputdir, pdbdir, targetdir, t, s, short_sample, 
-                min_intersect, vol, screen, min_hits]
-    params = [[i, structure] + shared for i, structure in enumerate(tracker)]
-
     # setup futures
-    futures = [pocket_search.remote(*par) for par in params]
+    futures = [pocket_search.remote(searcher, pdb) for pdb in searcher.remaining_pdbs]
     
     # run ray
     _ = ray.get(futures)
 
 else:
     # run in serial on one thread
-    for i, structure in enumerate(tracker):
-        pocket_search(i, structure, outputdir, pdbdir, targetdir, t, s, 
-                        short_sample, min_intersect, vol, screen, min_hits) 
+    for structure in searcher.remaining_pdbs:
+        searcher.search(structure)
 
 postprocessing(outputdir)
 
