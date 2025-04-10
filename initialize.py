@@ -7,8 +7,10 @@ import numpy as np
 from pathlib import Path
 import subprocess
 import ray
-from typing import List
+from typing import Union
 import yaml
+
+PathLike = Union[str, Path]
 
 # this script is predicated on you already having the desired
 # pocket chosen. you can input the pocket number for excision
