@@ -62,7 +62,7 @@ class Coordinates:
         """
         Center array based on geometric center of mass
         """
-        self.coords = self.coords - np.mean(self.coords, axis=0)
+        self.coords -= np.mean(self.coords, axis=0)
     
     def align(self) -> List[List[float]]:
         """
@@ -71,8 +71,7 @@ class Coordinates:
         """
         array = self.coords
         a = self.principal
-        aligned = np.zeros((array.shape[0], array.shape[1]))
-        b = [0,0,1]
+        b = np.array([0, 0, 1])
         v = np.cross(a, b)
         c = np.dot(a, b)
         I = np.eye(3, 3)
@@ -89,7 +88,6 @@ class Coordinates:
         aligned = rotmatrix @ self.coords.T
         self.coords = aligned.T
         return self.coords
-  
     
     def make_pdb(self, 
                  array: np.ndarray, 
@@ -204,7 +202,7 @@ class Coordinates:
         """
         Flips coordinate system by 180 degrees about the x-axis
         """
-        flp=np.array([])
+        flp = np.array([])
         f = R.from_euler('x', 180, degrees=True)
         flp = f.apply(arr)
         self.make_pdb(flp, conf, 0, 0, trans, 1)
