@@ -30,7 +30,7 @@ parser.add_argument('-ht','--hits', dest='hilt', default=1,
 parser.add_argument('-s','--screen', dest='screen', default=0.5,
                 metavar='S', help='Short screen filter to determine whether \
                                     translational sampling occurs')
-parser.add_argument('-cp','--checkpoint', dest='checkpoint', default=False,
+parser.add_argument('-cp','--checkpoint', dest='checkpoint', default=None,
                 metavar='P', help='The name of checkpoint file to read in order \
                                     to restart a run')
 parser.add_argument('-mp', '--multiprocessing', dest='mp', default=1,
@@ -52,7 +52,7 @@ cutoff = float(args.cutoff)
 min_intersect = float(args.filt)
 min_hits = int(args.hilt)
 screen = float(args.screen)
-checkpoint = Path(args.checkpoint)
+checkpoint = Path(args.checkpoint) if args.checkpoint is not None else args.checkpoint
 multiprocessing = int(args.mp)
 
 aliases = Path('aliases.yaml')
@@ -89,8 +89,6 @@ else:
     # run in serial on one thread
     for structure in searcher.remaining_pdbs:
         searcher.search(structure)
-
-postprocessing(outputdir)
 
 if os.path.exists('checkpoint.chk'):
     os.remove('checkpoint.chk')

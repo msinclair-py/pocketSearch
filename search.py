@@ -60,8 +60,9 @@ class pocketSearcher:
         self.min_int = min_intersect
         self.min_hit = min_hits
         self.screen = screen
-
-        self.restart_run() if checkpoint.exists() else self.preprocess()
+        
+        if checkpoint is not None:
+            self.restart_run() if checkpoint.exists() else self.preprocess()
 
         try:
             cfg = yaml.safe_load(open(config))
@@ -72,6 +73,8 @@ class pocketSearcher:
             raise KeyError('Configuration YAML missing one of the following: \
                            `fpocket`, `surf`, `vasp`!!!')
 
+        self.catalogue = list(self.tgt_dir.glob('*.SURF'))
+        self.target_vol = float(open(self.tgt_dir / 'vol.txt').readlines()[-1].split(': ')[-1])
         self.preprocess()
         self.gen_scorefile()
 
@@ -105,7 +108,9 @@ class pocketSearcher:
         for pdb in self.pdb_dir.glob('*.pocket*.pdb'):
             stem = pdb.name.split('.')
             if (self.pdb_dir / f'{stem[0]}.pdb').exists():
-                coordsystem = Coordinates(stem[0], pnum=stem[1])
+                coordsystem = Coordinates(self.pdb_dir, 
+                                          stem[0], 
+                                          pnum=stem[1])
                 coordsystem.get_coords()
                 coordsystem.center()
                 coordsystem.principal()
@@ -143,33 +148,35 @@ class pocketSearcher:
         """
         Main function.
         """
+        pocket = structure.stem
         translation_sampling = np.full(6, True)
         print(f'-----Running on: {structure}-----')
+        
+        self.gen_surfs(pocket)
+        self.intersect(pocket, full=False)
+        self.extract_score(pocket)
+        self.original_volume(pocket)
 
-        self.gen_surfs()
-        self.intersect()
-        self.extract_score()
-        self.original_volume()
-
-        result, translation_sampling = self.screen_check()
+        result, translation_sampling = self.screen_check(pocket,
+                                                         translation_sampling)
 
         if np.any(np.append(result, translation_sampling)):
             print(f'-----Full screen on: {structure}-----')
             long_sample = self.generate_long_sample(result, translation_sampling)
-            self.intersect()
+            self.intersect(pocket)
 
-            self.extract_score()
+            self.extract_score(pocket)
 
-        self.append_scorefile()
-        self.rosetta_prep()
-        self.update_checkpoint()
-        self.delete_surfs()
+        self.append_scorefile(pocket)
+        self.rosetta_prep(pocket)
+        self.update_checkpoint(pocket)
+        self.delete_surfs(pocket)
 
     def format_pdbs(self) -> None:
         """
         Moves all .ent files into .pdb files.
         """
-        for f in self.pdb_dir:
+        for f in self.pdb_dir.glob('*'):
             if f.suffix == '.ent':
                 new_f = f.with_suffix('.pdb')
                 os.rename(f, new_f)
@@ -183,16 +190,17 @@ class pocketSearcher:
             pdb (PathLike): Path to PDB for which to obtain info.
         """
         directory = pdb.parent
-        structure = pdb.name
+        structure = Path(pdb.name)
         print(structure)
 
         reader = [line for line in open(pdb).readlines()]
 
-        exp_info = [None, None]
+        exp_info = ['None', 'None']
         cofactors = []
+        title = 'None'
         for line in reader:
             if 'COMPND   2' in line:
-                title = line[20].strip()
+                title = line[20:].strip()
             elif 'EXPDATA' in line:
                 method = line.replace(';', ',')
                 method = ' '.join(method.split()[1:])
@@ -214,7 +222,7 @@ class pocketSearcher:
                 if cofactor[1] == cofs[idx][0]:
                     cofs[idx][1] = cofs[idx][1] + ''.join(cofactor[2:])
                 else:
-                    cofs.append([cofline[0], ' '.join(cofactor[1:])])
+                    cofs.append([cofactor[0], ' '.join(cofactor[1:])])
 
             cofactors = ';'.join([': '.join(cofactor) for cofactor in cofactors])
 
@@ -229,6 +237,95 @@ class pocketSearcher:
             out.write(title + '\n')
             out.write(exp_info.strip() + '\n')
             out.write(cofactors.strip())
+    
+    def identify_cofactors(self) -> None:
+        """
+        Iterate through each generate pocket that passes filters to identify
+        which, if any, cofactors could have inhabited the pocket. This is
+        accomplished via a simple shortest distance algorithm on the pocket
+        prior to centering and alignment.
+        Arguments:
+            directory (PathLike): filepath to generated pockets
+        """
+        # generate a list of every pocket, skips over aligned pockets if this is
+        # a restart run due to aligned pockets lacking the .pdb extension
+        all_pockets = [ p for p in self.pdb_dir.glob('*pocket*.pdb') ]
+
+        # go through each pocket to determine if it inhabits a cofactor's space
+        for pocket in all_pockets:
+            base = pocket.name
+            pnum = base.split('.')[1]
+
+            print(base)
+            # location and name of corresponding infofile
+            infodir = self.pdb_dir / 'infofiles'
+            infofile = infodir / f'{pocket.stem}.info'
+
+            # read whole infofile, specifically take the cofactor line for now
+            infolines = [line for line in open(infofile).readlines()]
+            cofactline = infolines[-1]
+
+            if cofactline != 'NONE':
+                # cofactor format is - 3 letter code: full name: pocket#/'Not present'; .....
+                cofactors = [c.split(':')[0].strip() for c in cofactline.split(';')]
+
+                # get pocket coordinates
+                c = [[l[30:38].strip(), l[38:46].strip(), l[46:54].strip()] 
+                        for l in open(pocket).readlines()]
+
+                # extract all heteroatom coordinate lines from original pdb
+                cof = [line 
+                       for line in open(self.pdb_dir / 'original_pdbs' / f'{pocket.stem}.pdb').readlines() 
+                       if line[:6] == 'HETATM']
+
+                # generate array where 0 = cofactor not in pocket, 1 = cofactor in pocket
+                # initially all cofactors set to 0
+                cof_present = np.array([[c, 0] for c in cofactors])
+                for i, cofactor in enumerate(cofactors):
+                    # get specific cofactor coordinates
+                    c2 = [[l[30:38].strip(), l[38:46].strip(), l[46:54].strip()] 
+                          for l in cof if l[17:20].strip() == cofactor]
+
+                    # measure minimum pairwise euclidean distance of cofactor and pocket coords
+                    d = np.min(np.min(cdist(np.array(c).astype(float), 
+                                            np.array(c2).astype(float), 
+                                            'euclidean')))
+
+                    # cofactor occupacy of pocket defined as any pair of atoms <1 angstrom, set array to 1
+                    if d < 1:
+                        cof_present[np.where(cof_present == cofactor)[0][0], 1] = 1
+
+                # identified array tracks any changes to make to infofile
+                identified = []
+                for i, cofactor in enumerate(cofactline.split(';')):
+                    # info contains just the info for the current cofactor
+                    info = [c.strip() for c in cofactor.split(':')]
+
+                    # if the entry for this cofactor in cof_present is '1', it occupies this pocket
+                    if cof_present[np.where(cof_present == info[0])[0][0], 1] == '1':
+                        # if this cofactor HAS NOT been assigned a pocket, assign this one
+                        if info[-1] == 'Not present':
+                            info[-1] = pnum
+                        # if this cofactor HAS been assigned a pocket, append this one
+                        else:
+                            info[-1] = ', '.join([info[-1],pnum])
+
+                    identified.append(info)
+
+                # generate the updated cofactor info line
+                new_cofline = []
+                for i in range(len(identified)):
+                    cur = ': '.join(identified[i])
+                    if i > 0:
+                        new_cofline = '; '.join([new_cofline, cur])
+                    else:
+                        new_cofline = cur
+
+                # write out updated infofile
+                with open(infofile,'w') as out:
+                    out.write(f'{infolines[0]}')
+                    out.write(f'{infolines[1]}')
+                    out.write(f'{new_cofline}')
 
     def clean(self,
               pdb: PathLike) -> None:
@@ -239,9 +336,9 @@ class pocketSearcher:
         """
         # strip out any lines we care about
         filtered = []
-        for line in open(pdb).readlines():
-            if all(['ATOM' in line, # normal biomolecule
-                    line[21] == 'A', # we only want chain A
+        lines = [line for line in open(pdb).readlines() if 'ATOM' in line]
+        for line in lines:
+            if all([line[21] == 'A', # we only want chain A
                     line[22:26].strip().isdigit(), # has resid
                     line[16] in [' ', 'A']]): # in case there is an NMR ensemble
                 filtered.append(f'{line[:16]} {line[17:]}')
@@ -251,7 +348,6 @@ class pocketSearcher:
         renumbered = [np.where(np.unique(resids) == x)[0][0] + 1 for x in resids]
         new_lines = [f'{line[:22]}{renum:>4}{line[26:]}' 
                      for line, renum in zip(filtered, renumbered)]
-        new_lines += ['TER']
 
         path = pdb.parent
 
@@ -276,7 +372,7 @@ class pocketSearcher:
             root = pdb.name.split('.')[0]
             if not (self.pdb_dir / f'{root}_out').exists():
                 print(f'-----Running fpocket on {root}-----')
-                args = (fpocket, '-f', pdb, '-i', str(min_spheres))
+                args = (self.fpocket, '-f', pdb, '-i', str(min_spheres))
                 subprocess.run(args)
     
     def write_pockets(self,
@@ -289,6 +385,9 @@ class pocketSearcher:
             pdb (PathLike): Path to pdb to grab pockets from
             n_spheres (int): Number of alpha spheres in our parent pocket
         """
+        if isinstance(pdb, str):
+            pdb = Path(pdb)
+
         max_spheres = n_spheres * self.max_cut
 
         pocket_IDs = [int(line[22:26].strip()) 
@@ -301,11 +400,11 @@ class pocketSearcher:
             a = pocket_IDs.count(j)
 
             if a <= max_spheres:
-                output_file = self.pdb_dir / pdb.name.split('_')[0] + f'.pocket{j}.pdb'
+                output_file = self.pdb_dir / f'{pdb.name.split("_")[0]}.pocket{j}.pdb'
                 with open(output_file, 'w') as outfile:
-                    for line in pocket_IDs:
-                        if int(line[22:26].strip()) == unique[i]:
-                            outfile.write(line)
+                    for pid in pocket_IDs:
+                        if pid == unique[i]:
+                            outfile.write(str(pid))
     
     def gen_surfs(self,
                   pocket: str) -> None:
@@ -314,12 +413,12 @@ class pocketSearcher:
         Arguments:
             pocket (str): PDB ID and Pocket Number delimited by `.`
         """
-        pocket = self.pdb_dir / f'aligned.{pocket}'
-        n, p = pocket.split('.')[:2]
+        structure = self.pdb_dir / f'aligned.{pocket}'
+        n, p = pocket.split('.')
 
-        arg = (surf, 
+        arg = (self.surf, 
                '-surfProbeGen', 
-               'pocket', 
+               structure, 
                self.pocket_dir / f'{n}_{p}.SURF', 
                '3', 
                '.5')
@@ -327,37 +426,34 @@ class pocketSearcher:
         subprocess.run(arg, stdout=out)
         out.close()
 
-    def intersect(self):
+    def intersect(self,
+                  pocket: str,
+                  full: bool=True) -> None:
         """
         Runs intersect VASP on given pocket.
         """
-        count = 0
         name = '_'.join(pocket.split('.')[:2])
         structure = self.pocket_dir / f'{name}.SURF'
 
         (self.vasp_dir / name).mkdir(exist_ok=True)
 
-        for init in catalogue:
-            count += 1
+        for i, init in enumerate(self.catalogue):
             if full:
                 modulo = 25
             else:
                 modulo = 5
 
-            if count % 500 == 0:
-                print(f'-----{snum + 1}/{total} pockets to be sampled-----')
-
-            if count % modulo == 0:
-                print(f'{pocket}: {count}/{samples} conformations')
+            if i % modulo == 0:
+                print(f'{pocket}: {i}/{len(self.catalogue)} conformations')
 
             filename = init.name.split('.')[:5]
             surf_file = self.vasp_dir / name / f'intersect.{name}.{".".join(filename)}.SURF'
-            arg = (vasp, '-csg', structure, init, 'I', surf_file, '.5')
+            arg = (self.vasp, '-csg', structure, init, 'I', surf_file, '.5')
             out = open(self.out_dir  / 'intersect.log', 'w') # NOTE: CHECK THIS AGAINST OG
             subprocess.run(arg, stdout=out)
             out.close()
 
-        arg = (surf, '-surveyVolume', structure)
+        arg = (self.surf, '-surveyVolume', structure)
         out = open(self.pocket_dir / f'{name}.vol.txt', 'w')
         subprocess.run(arg, stdout=out)
         out.close()
@@ -372,8 +468,8 @@ class pocketSearcher:
         """
         name = '_'.join(pocket.split('.')[:2])
         for intersect in (self.vasp_dir / name).glob('*.SURF'):
-            p = '_'.join(interesect.name.split('.')[1:7])
-            arg = (surf, '-surveyVolume', intersect)
+            p = '_'.join(intersect.name.split('.')[1:7])
+            arg = (self.surf, '-surveyVolume', intersect)
             out = open(self.vasp_dir / name / f'{p}_iscore.txt', 'w')
             subprocess.run(arg, stdout=out)
             out.close()
@@ -387,13 +483,12 @@ class pocketSearcher:
         """
         v = self.pocket_dir / f'{"_".join(pocket.split(".")[:2])}.SURF'
         arg = (self.surf, '-surveyVolume', v)
-        out = open(self.pocket_dir / f'{v.stem}.vol.txt', 'w')
+        out = open(v.with_suffix('.vol.txt'), 'w')
         subprocess.run(arg, stdout=out)
         out.close()
 
     def screen_check(self,
                      pocket: str,
-                     cut: float,
                      _tSamp: List[bool]) -> Tuple[bool, List[bool]]:
         """
         Check on success of short screen. Map out which translations
@@ -412,17 +507,17 @@ class pocketSearcher:
         values = np.array(
             [
                 float([lines.split() for lines in open(struc, 'r')][-1][-1])
-                for struc in small.glob(f'{name}_conf0*_0_0_iscore.txt')
+                for struc in small.glob(f'{name}*_conf0*_0_0_iscore.txt')
             ]
         )
 
-        if np.where(values > cut)[0].size > 0:
+        if np.where(values > self.screen)[0].size > 0:
             result = True
 
         for i in range(len(_tSamp)):
-            scorefile = small / f'{name}_conf0_0_0_{i+1}_0_iscore.txt'
+            scorefile = list(small.glob(f'*_conf0_0_0_{i+1}_iscore.txt'))[0]
             t = [line.split() for line in open(scorefile).readlines()][-1][-1]
-            _tSamp[i] = float(t) > cut
+            _tSamp[i] = float(t) > self.screen
 
         return result, _tSamp
 
@@ -461,9 +556,7 @@ class pocketSearcher:
         return full
 
     def append_scorefile(self,
-                         structure: str,
-                         _filter: float,
-                         volume: float) -> None:
+                         structure: str) -> None:
         """
         Appends run to scorefile. Checks if structure has been written to file
         before adding it and outputs updated values if so.
@@ -480,6 +573,9 @@ class pocketSearcher:
             ).readlines()[-1].split()[-1]
         )
 
+        if pocket_volume == 0.:
+            pocket_volume = 1e6 # something horrible happened during SURF
+
         scores = [s for s in (self.vasp_dir / f'{pdb}_{pock}').glob('*_iscore.txt')]
 
         hits = 0
@@ -491,7 +587,7 @@ class pocketSearcher:
             curr = float(open(score).readlines()[-1].split()[-1])
             if not best or curr > best:
                 best = curr
-            if curr / volume > _filter:
+            if curr / pocket_volume > self.min_int:
                 hits += 1
             
         print(f'------Updating Scorefile-----')
@@ -505,10 +601,10 @@ class pocketSearcher:
         temp = pd.DataFrame({
             'PDB': pdb,
             'Pocket': pock,
-            'Target Vol.': volume,
+            'Target Vol.': self.target_vol,
             'Pocket Vol.': pocket_volume,
             'Int. Vol.': best,
-            'Int%': float(best / volume),
+            'Int%': best / self.target_vol,
             '#hits': hits,
             'Exp. Method': info[1][:-2],
             'Cofactor(s)': cofactor,
@@ -519,8 +615,6 @@ class pocketSearcher:
         self.pretty_print()
 
     def rosetta_prep(self,
-                     _filter: float,
-                     hits: float,
                      pocket: str) -> None:
         """
         Generates ROSETTA .pos files for each structure that passes both the
@@ -533,10 +627,10 @@ class pocketSearcher:
             pocket (str): PDB ID and Pocket number of each structure
         """
         good_pockets = self.scores[
-            (self.scores['Int%'] > _filter) & (self.scores['#hits'] > hits)
+            (self.scores['Int%'] > self.min_int) & (self.scores['#hits'] > self.min_hit)
         ]
 
-        for pdb, pnum in zip(*good_pockets[['PDB', 'Pocket']].tolist()):
+        for pdb, pnum in zip(good_pockets['PDB'], good_pockets['Pocket']):
             pocket_file = self.pdb_dir / f'{pdb}_out' / 'pockets' / f'pocket{pnum}_atm.pdb'
 
             resids = np.array(
@@ -582,4 +676,16 @@ class pocketSearcher:
         """
         Writes out score dataframe with nice formatting.
         """
-        self.scores.to_csv(self.score_file, sep='\t')
+        self.scores.to_csv(self.score_file, sep='\t', index=False)
+
+    @property
+    def remaining_pdbs(self):
+        """
+        List of pdbs that need to be searched still.
+        """
+        pockets = [pdb for pdb in self.pdb_dir.glob('*pocket*.pdb')]
+        try:
+            scored_pdbs = list(zip(*self.scores[['PDB', 'Pocket']]))
+            return [pdb for pdb in pockets if pdb.stem.split('.') not in scored_pdbs]
+        except (NameError, KeyError, AttributeError): # if file doesn't exist or it is empty
+            return pockets

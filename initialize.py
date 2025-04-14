@@ -80,7 +80,7 @@ all_conformations = fpath.glob('*_conf*')
 
 @ray.remote
 def generate_surface_files(structure: PathLike) -> None:
-    attributes = '.'.join(*structure.name.split('_'))
+    attributes = '.'.join(structure.name.split('_'))
     args=(surf, 
           '-surfProbeGen',
           structure, 

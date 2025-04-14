@@ -106,7 +106,7 @@ class Coordinates:
     
         elif self.mode == 0:                
             fout = open(self.directory / f'{self.pdb}_{a}_{b}_{c}_{d}_{e}','w')
-            fin = open(self.directory f'{self.pdb}.pocket.pdb','r')
+            fin = open(self.directory / f'{self.pdb}.pocket.pdb', 'r')
 
         for i, line in enumerate(fin):
             x=f'{array[i][0]:.3f}'
