@@ -4,7 +4,8 @@ from pathlib import Path
 from persim import wasserstein
 from ripser import ripser
 from search import pocketSearcher
-from typing import List
+import subprocess
+from typing import List, Tuple, Union
 
 Diagram = List[np.ndarray]
 PathLike = Union[str, Path]
@@ -28,11 +29,14 @@ class pocketHomology(pocketSearcher):
                  out_directory: PathLike,
                  n_alpha_spheres: int,
                  aliases: PathLike):
-        super().__init__(pdb_directory, out_directory, '', config=aliases)
-        pocket_coords = self.scrape_coordinates(self.run_fpocket(target))
+        super().__init__(pdb_directory, out_directory, '', 
+                         checkpoint=None, config=aliases)
+        self.target_spheres = n_alpha_spheres
+        self.min_spheres = self.target_spheres * self.min_cut
+        self.max_alphas = self.target_spheres * self.max_cut
+        pocket_coords = self.scrape_coordinates(target)
         self.target = self.generate_persistence_diagram(pocket_coords)
         self.gen_scorefile()
-        self.max_alphas = n_alpha_spheres * self.max_cut
 
     def search(self, 
                structure: PathLike) -> None:
@@ -41,6 +45,9 @@ class pocketHomology(pocketSearcher):
         persistent homology protocol and writes wasserstein distances to
         internal score dataframe.
         """
+        if isinstance(structure, str):
+            structure = Path(structure)
+
         good_pockets = self.run_fpocket(structure)
         for good_pocket in good_pockets:
             coords = self.scrape_coordinates(good_pocket)
@@ -66,14 +73,19 @@ class pocketHomology(pocketSearcher):
         within our number of alpha sphere criteria. Returns a list of filepaths
         to viable pockets.
         """
-        out = structure.with_suffix('_out')
+        out = Path(f'{structure.stem}_out')
         if not out.exists():
-            args = (self.fpocket, '-f', structure, '-i', self.min_spheres)
+            args = (self.fpocket, '-f', structure, '-i', str(self.min_spheres))
             subprocess.run(args)
+
+        fpocket_out = structure.parent / out / out.with_suffix('.pdb')
         
-        pocket_IDs = [int(line[22:26].strip())
-                      for line in open(out / structure.name).readlines()
-                      if 'STP' in line]
+        pocket_IDs = []
+        pocket_lines = []
+        for line in open(fpocket_out).readlines():
+            if 'STP' in line:
+                pocket_IDs.append(int(line[22:26].strip()))
+                pocket_lines.append(line)
 
         unique = np.unique(np.array(pocket_IDs))
         good = []
@@ -82,11 +94,11 @@ class pocketHomology(pocketSearcher):
             a = pocket_IDs.count(j)
 
             if a <= self.max_alphas:
-                output_file = self.pdb_dir / structure.name.split('_')[0] + f'.pocket{j}.pdb'
+                output_file = self.pdb_dir / f'{structure.stem.split("_")[0]}.pocket{j}.pdb'
                 good.append(output_file)
                 with open(output_file, 'w') as outfile:
-                    for line in pocket_IDs:
-                        if int(line[22:26].strip()) == unique[i]:
+                    for line in pocket_lines:
+                        if j == int(line[22:26].strip()):
                             outfile.write(line)
 
         return good
@@ -123,8 +135,11 @@ class pocketHomology(pocketSearcher):
         comparing different diagrams but we save all 3 out here anyways.
         """
         wass = np.zeros((3))
-        for i in wass.shape[0]:
-            wass[i] = wasserstein(self.target[i], diagram[i])
+        for i in range(wass.shape[0]):
+            try:
+                wass[i] = wasserstein(self.target[i], diagram[i])
+            except IndexError:
+                wass[i] = np.nan
 
         return wass
 
@@ -140,14 +155,9 @@ class pocketHomology(pocketSearcher):
         else:
             self.scores = pd.DataFrame(columns=['PDB',
                                                 'Pocket',
-                                                'N Spheres (Target)',
-                                                'N Spheres (Pocket)',
                                                 'H0',
                                                 'H1',
-                                                'H2',
-                                                'Exp. Method',
-                                                'Cofactor(s)',
-                                                'Protein Name'])
+                                                'H2'])
 
     def append_scorefile(self,
                          structure: PathLike,
@@ -156,18 +166,13 @@ class pocketHomology(pocketSearcher):
         Adds a new set of wasserstein distances for a given pocket to
         score dataframe.
         """
-        pdb, pock = structure.split('.')[:2]
+        pdb, pock = structure.stem.split('.')
         temp = pd.DataFrame({
             'PDB': pdb,
             'Pocket': pock,
-            'N Spheres (Target)': ,
-            'N Spheres (Pocket)': ,
             'H0': dists[0],
             'H1': dists[1],
             'H2': dists[2],
-            'Exp. Method': ,
-            'Cofactor(s)': ,
-            'Protein Name': ,
         }, index=[0])
         
         self.scores = pd.concat([self.scores, temp]).reset_index(drop=True)

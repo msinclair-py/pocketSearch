@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import argparse
+import numpy as np
 import os
 from pathlib import Path
 import ray
@@ -13,8 +14,7 @@ parser = argparse.ArgumentParser(description='Take user-defined run-time \
 parser.add_argument('pdbdir', help='Directory of candidate scaffold PDBs')
 parser.add_argument('outputdir', help='Output directory for rosetta files, \
                                     scorefile, etc.')
-parser.add_argument('targetdir', help='Directory containing target catalytic \
-                                    pocket conformations')
+parser.add_argument('target', help='Path to PDB of target fpocket output')
 parser.add_argument('-n', '--num', dest='num_spheres', default=106,
                 metavar='N', help='Number of alpha spheres in target pocket.')
 parser.add_argument('-t', '--threads', dest='threads', default=1,
@@ -30,22 +30,23 @@ args = parser.parse_args()
 # initialize all options to corresponding variables
 pdbdir = Path(args.pdbdir)
 outputdir = Path(args.outputdir)
-targetdir = Path(args.targetdir)
+target = Path(args.target)
 n_spheres = int(args.num_spheres)
 multiprocessing = int(args.threads)
 
 aliases = Path('aliases.yaml')
 
 searcher = pocketHomology(
+    target,
     pdbdir,
     outputdir,
-    targetdir,
     n_spheres,
     aliases=aliases,
 )
 
-
-batched = np.array_split(np.array(pdbdir.glob('*.pdb')), multiprocessing)
+batched = np.array([p for p in pdbdir.glob('*.pdb') if len(p.stem) == 4])
+print(batched)
+#batched = np.array_split(np.array(pdbdir.glob('*.pdb')), multiprocessing)
 
 if multiprocessing > 1:    
     @ray.remote

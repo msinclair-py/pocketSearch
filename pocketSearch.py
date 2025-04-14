@@ -70,6 +70,8 @@ searcher = pocketSearcher(
     aliases
 )
 
+searcher.preprocess()
+
 if multiprocessing:
     @ray.remote
     def pocket_search(pocket_searcher: object,

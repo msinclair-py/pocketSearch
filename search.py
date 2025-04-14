@@ -73,15 +73,13 @@ class pocketSearcher:
             raise KeyError('Configuration YAML missing one of the following: \
                            `fpocket`, `surf`, `vasp`!!!')
 
-        self.catalogue = list(self.tgt_dir.glob('*.SURF'))
-        self.target_vol = float(open(self.tgt_dir / 'vol.txt').readlines()[-1].split(': ')[-1])
-        self.preprocess()
-        self.gen_scorefile()
-
     def preprocess(self) -> None:
         """
 
         """
+        self.catalogue = list(self.tgt_dir.glob('*.SURF'))
+        self.target_vol = float(open(self.tgt_dir / 'vol.txt').readlines()[-1].split(': ')[-1])
+
         self.format_pdbs()
         (self.pdb_dir / 'original_pdbs').mkdir(exist_ok=True)
 
@@ -123,7 +121,8 @@ class pocketSearcher:
 
         for d in (self.vasp_dir, self.score_dir, self.pocket_dir, self.rosetta_dir):
             d.mkdir(exist_ok=True)
-
+        
+        self.gen_scorefile()
         print('Preprocessing complete ...')
 
     def gen_scorefile(self) -> None:
