@@ -389,9 +389,12 @@ class pocketSearcher:
 
         max_spheres = n_spheres * self.max_cut
 
-        pocket_IDs = [int(line[22:26].strip()) 
-                      for line in open(self.pdb_dir / pdb.stem / pdb.name).readlines()
-                      if 'STP' in line]
+        pocket_IDs = []
+        pocket_lines = []
+        for line in open(self.pdb_dir / pdb.stem / pdb.name).readlines():
+            if 'STP' in line:
+                pocket_lines.append(line)
+                pocket_IDs.append(int(line[22:26].strip()))
         
         unique = np.unique(np.array(pocket_IDs))
         for i in range(unique.shape[0]):
@@ -401,9 +404,9 @@ class pocketSearcher:
             if a <= max_spheres:
                 output_file = self.pdb_dir / f'{pdb.name.split("_")[0]}.pocket{j}.pdb'
                 with open(output_file, 'w') as outfile:
-                    for pid in pocket_IDs:
+                    for pid, line in zip(pocket_IDs, pocket_lines):
                         if pid == unique[i]:
-                            outfile.write(str(pid))
+                            outfile.write(line)
     
     def gen_surfs(self,
                   pocket: str) -> None:
