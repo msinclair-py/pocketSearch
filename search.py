@@ -124,8 +124,21 @@ class pocketSearcher:
         for d in (self.vasp_dir, self.score_dir, self.pocket_dir, self.rosetta_dir):
             d.mkdir(exist_ok=True)
         
+        self.check = []
         self.gen_scorefile()
         print('Preprocessing complete ...')
+
+    def restart_run(self) -> None:
+        self.vasp_dir = self.out_dir / 'VASP'
+        self.score_dir = self.vasp_dir / 'scores'
+        self.pocket_dir = self.vasp_dir / 'pockets'
+        self.rosetta_dir = self.out_dir / 'rosetta'
+
+        for d in (self.vasp_dir, self.score_dir, self.pocket_dir, self.rosetta_dir):
+            d.mkdir(exist_ok=True)
+        
+        self.check = [line.strip() for line in open(self.out_dir / 'checkpoint.chk').readlines()]
+        self.gen_scorefile()
 
     def gen_scorefile(self) -> None:
         self.score_file = self.out_dir / 'scores.csv'
@@ -150,28 +163,30 @@ class pocketSearcher:
         Main function.
         """
         pocket = structure.stem
-        translation_sampling = np.full(6, True)
-        print(f'-----Running on: {structure}-----')
-        
-        self.gen_surfs(pocket)
-        self.intersect(pocket, full=False)
-        self.extract_score(pocket)
-        self.original_volume(pocket)
 
-        result, translation_sampling = self.screen_check(pocket,
-                                                         translation_sampling)
-
-        if np.any(np.append(result, translation_sampling)):
-            print(f'-----Full screen on: {structure}-----')
-            long_sample = self.generate_long_sample(result, translation_sampling)
-            self.intersect(pocket)
-
+        if pocket not in self.check:
+            translation_sampling = np.full(6, True)
+            print(f'-----Running on: {structure}-----')
+            
+            self.gen_surfs(pocket)
+            self.intersect(pocket, full=False)
             self.extract_score(pocket)
+            self.original_volume(pocket)
 
-        self.append_scorefile(pocket)
-        self.rosetta_prep(pocket)
-        self.update_checkpoint(pocket)
-        self.delete_surfs(pocket)
+            result, translation_sampling = self.screen_check(pocket,
+                                                             translation_sampling)
+
+            if np.any(np.append(result, translation_sampling)):
+                print(f'-----Full screen on: {structure}-----')
+                long_sample = self.generate_long_sample(result, translation_sampling)
+                self.intersect(pocket)
+
+                self.extract_score(pocket)
+
+            self.append_scorefile(pocket)
+            self.rosetta_prep(pocket)
+            self.update_checkpoint(pocket)
+            self.delete_surfs(pocket)
 
     def format_pdbs(self) -> None:
         """
@@ -653,6 +668,8 @@ class pocketSearcher:
         Arguments:
             structure (str): The model we have completed
         """
+        self.check.append(structure)
+
         f = open(self.out_dir / 'checkpoint.chk', 'a')
         f.write(structure + '\n')
         f.close()
