@@ -253,7 +253,7 @@ class pocketSearcher:
     
     def identify_cofactors(self) -> None:
         """
-        Iterate through each generate pocket that passes filters to identify
+        Iterate through each generated pocket that passes filters to identify
         which, if any, cofactors could have inhabited the pocket. This is
         accomplished via a simple shortest distance algorithm on the pocket
         prior to centering and alignment.
@@ -267,11 +267,10 @@ class pocketSearcher:
         # go through each pocket to determine if it inhabits a cofactor's space
         for pocket in all_pockets:
             base = pocket.name
-            pnum = base.split('.')[1]
+            pdb, pnum = pocket.stem.split('.')
 
-            print(base)
             # location and name of corresponding infofile
-            infofile = self.info_dir / f'{pocket.stem}.info'
+            infofile = self.info_dir / f'{pdb}.info'
 
             # read whole infofile, specifically take the cofactor line for now
             infolines = [line for line in open(infofile).readlines()]
@@ -287,7 +286,7 @@ class pocketSearcher:
 
                 # extract all heteroatom coordinate lines from original pdb
                 cof = [line 
-                       for line in open(self.pdb_dir / 'original_pdbs' / f'{pocket.stem}.pdb').readlines() 
+                       for line in open(self.pdb_dir / 'original_pdbs' / f'{pdb}.pdb').readlines() 
                        if line[:6] == 'HETATM']
 
                 # generate array where 0 = cofactor not in pocket, 1 = cofactor in pocket
