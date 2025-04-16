@@ -55,6 +55,7 @@ class pocketSearcher:
         self.pdb_dir = pdb_directory
         self.out_dir = out_directory
         self.tgt_dir = tgt_directory
+        self.info_dir = pdb_directory / 'infofiles'
         self.min_cut = min_alpha_spheres
         self.max_cut = max_alpha_spheres
         self.min_int = min_intersect
@@ -79,6 +80,7 @@ class pocketSearcher:
         """
         self.catalogue = list(self.tgt_dir.glob('*.SURF'))
         self.target_vol = float(open(self.tgt_dir / 'vol.txt').readlines()[-1].split(': ')[-1])
+        self.info_dir.mkdir(exist_ok=True)
 
         self.format_pdbs()
         (self.pdb_dir / 'original_pdbs').mkdir(exist_ok=True)
@@ -228,10 +230,7 @@ class pocketSearcher:
         else:
             cofactors = 'NONE'
 
-        info_path = directory / 'infofiles'
-        info_path.mkdir(exist_ok=True)
-
-        outfile = info_path / structure.with_suffix('.info')
+        outfile = self.info_dir / structure.with_suffix('.info')
         with open(outfile, 'w') as out:
             out.write(title + '\n')
             out.write(exp_info.strip() + '\n')
@@ -257,8 +256,7 @@ class pocketSearcher:
 
             print(base)
             # location and name of corresponding infofile
-            infodir = self.pdb_dir / 'infofiles'
-            infofile = infodir / f'{pocket.stem}.info'
+            infofile = self.info_dir / f'{pocket.stem}.info'
 
             # read whole infofile, specifically take the cofactor line for now
             infolines = [line for line in open(infofile).readlines()]
