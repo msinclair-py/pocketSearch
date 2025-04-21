@@ -537,7 +537,6 @@ class pocketSearcher:
 
     def generate_long_sample(self,
                              short: np.ndarray,
-                             result: bool, 
                              translation_sampling: List[bool]) -> np.ndarray:
         """
         Generate long sampling array. This is done by subtracting out the
@@ -546,26 +545,17 @@ class pocketSearcher:
         Arguments:
             short (np.ndarray): Array of paths to target SURF files that
                 we ran the short screen against.
-            result (bool): Signal to continue non-translated screening.
             translation_sampling (List[bool]): List of which translation
                 samples we need to run.
         """
-        if result:
-            # remove short sample from the full list
-            full = np.setdiff1d(self.tgt_dir.glob('*.SURF'), short)
+        # remove short sample from the full list
+        full = np.setdiff1d(self.tgt_dir.glob('*.SURF'), short)
             
-            # remove translations we don't want to do
-            for i, trans in enumerate(translation_sampling):
-                if not trans:
-                    translation = self.tgt_dir.glob('*conf*.*.*.{i+1}.*.SURF')
-                    full = np.setdiff1d(full, translation)
-
-        else: # this means non-translated screen failed
-            full = np.array([])
-            for i, trans in enumerate(translation_sampling):
-                if trans:
-                    translation = self.tgt_dir.glob('*conf*.*.*.{i+1}.*.SURF')
-                    full = np.append(full, translation)
+        # remove translations we don't want to do
+        for i, trans in enumerate(translation_sampling):
+            if not trans:
+                translation = self.tgt_dir.glob('*conf*.*.*.{i+1}.*.SURF')
+                full = np.setdiff1d(full, translation)
 
         return full
 
